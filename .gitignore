@@ -1,0 +1,24 @@
+# Reference plugins (local only, not part of our project)
+Search_and_Destroy.xml
+WinkleGold_*.xml
+WinkleGold_Database.db
+
+# Original assets (keep locally for future Phase 6/7)
+images/
+*.wav
+VERSION
+changelog
+ReleaseChecklist.md
+CREDIT.md
+.gitattributes
+
+# Build/conversion artifacts
+*.docx
+md_to_docx.py
+
+# SQLite databases (generated at runtime)
+Search_and_Destroy.db
+
+# OS files
+.DS_Store
+Thumbs.db

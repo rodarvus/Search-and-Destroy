@@ -1,29 +1,177 @@
-# Search-and-Destroy
- Safe, Legal Search and Destroy
+# Search & Destroy v2
 
- # How to Install
+**Status: Work in Progress** - Phase 1 (Foundation) is complete. The plugin is not yet ready for general use.
 
- Multiple options, but two of the easier ways are:
+## What is this?
 
- 1. Click the green Code button in the top right and 'Download Zip'. Extract the XML file to wherever you store your plugins.
- 2. Click on the Search and Destroy XML plugin file, then click on 'Raw' in the top right. Right-click the Raw page and 'Save As'. Save it to your plugin directory.
+Search & Destroy v2 is a new MUSHclient plugin for [Aardwolf MUD](http://www.aardwolf.com/) that automates campaign, global quest, and quest mob targeting, navigation, and hunting. It is the core quality-of-life loop for leveling: take a campaign, find the mobs, navigate to them, kill them, repeat.
 
-After having done this, Ctrl+Shift+P (or Command+Shift+P if on Mac, I believe) to open up Plugins, click 'Add', and then select the newly created XML file.
+This is a ground-up rewrite that takes the best ideas and learnings from two existing Search & Destroy implementations:
 
-# Background
+- **Crowley's Search & Destroy** - The community-maintained version with mob database, smart scan, GUI, sound, and auto-update.
+- **WinkleGold's Search & Destroy ecosystem** - A multi-plugin architecture with hunt trick, mob database, mapper extender, and GUI.
 
-Years ago, WinkleWinkle ventured into what some may have considered dangerous territory and wrote the very first Search & Destroy plugin. Some people hated it, others loved it. Some people consider(ed) it botting, but it does not break any rules as-is. Some time after the initial creation, Fiendish made a change to the mapper database, and it broke WinkleWinkle's Search & Destroy plugin for many. Nokfah created a fix for it, however, and people were happy once more.
+The goal is to combine the strengths of both into a cleaner, more maintainable, and more testable plugin with a comprehensive automated test suite.
 
-Then WinkleWinkle quit playing, and no more updates happened. Over time, people had forked his version in efforts of making their own, but one of the greatest forks happened when Starling got bored and decided to invest time into learning how it works as well as enhancing it even further. Pwar also created his own version, and Rauru created a similar version himself. There are probably several others out there, but none known more than Starling's or Pwar's versions.
+## Current Status
 
-Starling, unfortunately, was banned a while back. In an effort to make sure that Search & Destroy remained a legal script to use, it was asked that I take up the maintenance on it. So, here we are today, with further improvements to be made in the future.
+| Phase | Name | Status |
+|-------|------|--------|
+| 1 | Foundation | **Complete** (220/220 tests) |
+| 2 | Campaign Pipeline | Not started |
+| 3 | Hunting Tools | Not started |
+| 4 | Smart Features | Not started |
+| 5 | GQ Support | Not started |
+| 6 | GUI Plugin | Not started |
+| 7 | Polish | Not started |
 
-# What is Search & Destroy?
+## Project Plan
 
-Search & Destroy is a quality-of-life tool. It utilizes the mapper plugin in order to get to your quest mobs faster, your campaign targets faster, and yes, even global quest mobs. It makes every attempt to load up the keyword into an alias so all you have to do is type the alias and enter. It presents a window that displays your campaign or global targets (and eventually will show quest targets, perhaps tabbed). It uses its own runto feature in order to run to your personally chosen 'start' room of the area. To clarify, there are no 'start' rooms to any area. It's why the mapper plugin cannot just run you to an area because you tell it to.
+### Phase 1: Foundation (Complete)
 
-In short, it can speed up your quests/campaigns/global quests. It is **NOT**, however, a bot as some may claim.
+Core infrastructure that everything else builds on:
 
-# What are the commands?
+- **CONST** - Plugin IDs, broadcast numbers, 240+ default area start rooms, mob keyword exceptions, area filters, noquest/vidblain area lists
+- **Util** - GMCP wrapper, SQL escaping, string utilities, colored output helpers
+- **Config** - User settings with load/save persistence via MUSHclient variables
+- **DB** - SQLite database with schema versioning, migration support, mob tracking, start room and mob override management
+- **State** - Central state container tracking room, character, activity, target, with GUI broadcast protocol
+- **MobKeyword** - Deterministic keyword guessing with DB overrides, hardcoded exceptions, area-specific filters
+- **Noexp** - Auto-noexp toggling based on TNL cutoff, level 200+ bypass
+- **Test suite** - 220 tests covering all modules, with real SQLite integration testing
 
-First and foremost, you should learn about **xhelp**. That will display, in the client, all the commands. Another one you should learn about is **snd update**, which will automatically update the plugin if changes are made and we post about it.
+### Phase 2: Campaign Pipeline (Next)
+
+The core gameplay loop:
+
+- **TargetList** - Parse CP info/check output into a unified target list with keyword guessing and mapper DB lookups
+- **CP** - Campaign info/check trigger parsing, event handlers (mob killed, complete, cleared, new available)
+- **DamageTracker** - Single combined regex for 98 damage verbs (instead of 98 separate triggers)
+- **Nav** - Speedwalk to area start rooms, goto room by number, execute hunt/where/scan on arrival
+- Wire up `xcp`, `go`, `nx`, `xrt` commands
+
+### Phase 3: Hunting Tools
+
+Finding mobs within an area:
+
+- **HuntTrick** - Progressive hunt cycling (1.mob, 2.mob, ...) with direction/portal/completion handling
+- **QuickWhere** - Where iteration with match/no-match handling
+- **AutoHunt** - Auto-hunt with direction following and step limiting
+- Wire up `ht`, `qw`, `ah` commands
+
+### Phase 4: Smart Features
+
+Intelligence and automation:
+
+- **SmartScan** - Scan + consider combo, mob difficulty assessment using 13 difficulty patterns
+- **Noexp** - Extended TNL tracking and GMCP config.noexp integration
+- **Quest** - GMCP comm.quest handler, quest timer countdown, quest targeting
+- PK room warnings
+- Wire up `qs` command
+
+### Phase 5: GQ Support
+
+Global quest integration:
+
+- **GQ** - Join/start/end/extended events, info/check parsing
+- State transitions between CP and GQ with state preservation
+- Wire up GQ aliases
+
+### Phase 6: GUI Plugin
+
+Visual interface (separate plugin file):
+
+- Target list miniwindow with colors, hotspots, click-to-navigate
+- Action buttons (xcp, go, kk, nx, qs, qw, ht, check)
+- Quest display, noexp readout, right-click context menu
+- Receives state from core via BroadcastPlugin protocol
+
+### Phase 7: Polish
+
+Production readiness:
+
+- Auto-update system
+- Full `xtest` debug command suite
+- Data migration tool (import from Crowley's SnDdb.db)
+- Help system
+
+## Architecture
+
+**2-plugin design:**
+
+1. `Search_and_Destroy_v2.xml` (Core) - All game logic, 17 modules organized as Lua tables
+2. `Search_and_Destroy_GUI.xml` (Phase 6) - Display-only miniwindow
+
+**Communication:** Core broadcasts state to GUI via `BroadcastPlugin` (messages 100-107). GUI sends commands back via `Execute()`.
+
+**Database:** `Search_and_Destroy.db` (SQLite) with 4 tables: mobs, areas, mob_overrides, start_rooms. Schema versioned via `PRAGMA user_version`.
+
+## Testing
+
+The project uses Test-Driven Development with a comprehensive standalone test suite that runs outside MUSHclient.
+
+**Requirements:**
+- Lua 5.1 (same version embedded in MUSHclient)
+- lsqlite3 (for real database integration tests)
+- lrexlib-pcre (for PCRE trigger regex validation)
+
+**Running tests:**
+```bash
+cd Search-and-Destroy
+lua tests/test_runner.lua
+```
+
+A git pre-commit hook automatically runs the test suite and blocks commits on any failure.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `xcp [N]` | Select target N from list (or show list) |
+| `go [area/N]` | Navigate to target area or room N |
+| `nx` | Execute next action on current target |
+| `ht [N] [mob]` | Hunt trick: cycle hunt N.mob |
+| `qw [mob]` | Quick where: locate mob |
+| `qs` | Quick scan: scan + consider |
+| `ah [mob]` | Auto-hunt: follow hunt directions |
+| `kk` | Quick kill current target |
+| `xrt [keyword]` | Re-target with new keyword |
+| `xset [setting]` | View/change settings |
+| `xhelp` | Show all commands |
+
+## Credits
+
+### Original Search & Destroy
+
+- **WinkleWinkle** - Created the very first Search & Destroy plugin for Aardwolf MUD
+- **Nokfah** - Fixed compatibility after Fiendish's mapper database changes
+- **Starling** - Major fork with significant enhancements
+- **Pwar** - Independent version with its own mob database
+- **Rauru** - Another independent version
+
+### Crowley's Search & Destroy
+
+Crowley took over maintenance to ensure Search & Destroy remained a legal, community-supported plugin. His version added substantial features over many releases (v5.0-5.99):
+
+- **Crowley** - Maintainer. Added mob database, smart scan, quest target support, sound integration, GUI target window with hotspots, auto-update system, in-game help and changelog, color customization, and extensive bug fixes ([AardCrowley/Search-and-Destroy](https://github.com/AardCrowley/Search-and-Destroy))
+- **Naricain** - Contributions to Crowley's version, sound setup
+- **Karathos** - Color code stripping in mob table notes
+
+### WinkleGold's Search & Destroy Ecosystem
+
+WinkleGold (KoopaTroopa/xeryax) created a multi-plugin Search & Destroy ecosystem with a different architectural approach:
+
+- **WinkleGold** - Hunt trick implementation, mob name guessing algorithm, mapper extender with mob frequency tracking, GUI miniwindow with hotspot system, spellup integration
+
+### Sound Assets
+
+- Sound effects obtained from https://www.zapsplat.com
+
+### This Version
+
+- **Rodarvus** - Author of Search & Destroy v2
+- **Claude (Anthropic)** - AI pair programming assistant
+
+## License
+
+This plugin is free to use and modify. It is not a bot and does not violate Aardwolf's rules.
