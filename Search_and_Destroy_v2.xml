@@ -2080,9 +2080,10 @@ CP = {
    _check_list = {},
    _on_cp = false,
    _level = 0,
+   _type = "area",           -- "area" or "room" (default area if cp info times out)
    _can_get_new = false,
-   _last_check_time = 0,    -- cooldown: os.clock() of last cp check
-   _last_target = nil,       -- backup for target matching after refresh
+   _last_check_time = 0,     -- cooldown: os.clock() of last cp check
+   _last_target = nil,        -- backup for target matching after refresh
 }
 
 --- Start a new campaign (triggered by "Good luck in your campaign!")
@@ -2129,6 +2130,7 @@ end
 function CP.clear()
    CP._on_cp = false
    CP._level = 0
+   CP._type = "area"
    CP._can_get_new = false
    CP._info_list = {}
    CP._check_list = {}
@@ -2191,6 +2193,7 @@ end
 --- Resolve an area long name to an area key
 -- Tries mapper DB first, falls back to CONST.AREA_NAME_XREF
 function TargetList.resolve_area_key(location)
+   if not location or location == "" then return nil end
    -- Try mapper DB: query areas table for exact name match
    local ret, result = Util.map_query(
       string.format("SELECT uid FROM areas WHERE name = %s", Util.fixsql(location))
@@ -2510,6 +2513,12 @@ function on_parse_safety_timeout()
    EnableTriggerGroup("grp_cp_check", false)
    EnableTriggerGroup("grp_gq_info", false)
    EnableTriggerGroup("grp_gq_check", false)
+   -- Reset CP parsing state to prevent stuck partial state
+   if CP._on_cp and #CP._check_list == 0 then
+      Util.error("Parse timeout: CP parsing incomplete, resetting")
+      CP._info_list = {}
+      CP._check_list = {}
+   end
    Util.debug("Parse safety timeout: disabled parsing groups")
 end
 
@@ -2735,11 +2744,14 @@ function on_cp_check_end(name, line, wildcards)
    EnableTriggerGroup("grp_cp_check", false)
    EnableTimer("tim_parse_safety", false)
 
+   -- CP._on_cp and State._activity are already set by CP.start().
+   -- Re-confirm here defensively (handles reconnect case where cp check
+   -- is sent without cp info, e.g., after plugin reload mid-campaign).
    CP._on_cp = true
    State.set_activity("cp")
 
    -- Build target list from check data
-   TargetList.build(CP._check_list, CP._type or "area", CP._level)
+   TargetList.build(CP._check_list, CP._type, CP._level)
 
    -- Try to re-find prior target in new list
    if CP._last_target then

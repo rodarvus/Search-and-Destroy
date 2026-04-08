@@ -104,6 +104,16 @@ run_test("TargetList.build_area_resolves_area_key", function()
    assert_equal("diatz", t.area_key, "area key resolved from AREA_NAME_XREF")
 end)
 
+run_test("TargetList.resolve_area_key_nil", function()
+   assert_nil(TargetList.resolve_area_key(nil), "nil location returns nil")
+   assert_nil(TargetList.resolve_area_key(""), "empty location returns nil")
+end)
+
+run_test("TargetList.resolve_area_key_known", function()
+   local key = TargetList.resolve_area_key("The Three Pillars of Diatz")
+   assert_equal("diatz", key, "resolves known area from AREA_NAME_XREF")
+end)
+
 run_test("TargetList.build_area_unknown_location", function()
    -- Location that's not in AREA_NAME_XREF or mapper
    local check_list = {

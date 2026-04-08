@@ -18,14 +18,14 @@ The goal is to combine the strengths of both into a cleaner, more maintainable, 
 | Phase | Name | Status | Tests |
 |-------|------|--------|-------|
 | 1 | Foundation | **Complete** | 220 |
-| 2 | Campaign Pipeline | **In Progress** | 380 |
+| 2 | Campaign Pipeline | **In Progress** | 425 |
 | 3 | Hunting Tools | Not started | - |
 | 4 | Smart Features | Not started | - |
 | 5 | GQ Support | Not started | - |
 | 6 | GUI Plugin | Not started | - |
 | 7 | Polish | Not started | - |
 
-**Total: 380/380 tests passing.**
+**Total: 425/425 tests passing.**
 
 ## Project Plan
 
@@ -49,7 +49,7 @@ The core gameplay loop — take CP, parse targets, navigate, kill, repeat:
 - **TargetList** (done) - Parse CP info/check output into a unified target list with keyword guessing, mapper DB lookups with CONST fallback, mob history integration, area-based vs room-based CP detection. Room-based CPs with multiple area matches show all possibilities with most likely marked first.
 - **AREA_NAME_XREF** (done) - ~260 area long name to area key mappings (from Crowley), used as fallback when mapper DB unavailable
 - **Trigger patterns** (done) - All 40+ triggers validated via PCRE (rex_pcre) against verified game output. 6 wrong patterns fixed, 7 new triggers added (GQ lifecycle, powerup, CP timer, kill detection).
-- **CP** (next) - Campaign info/check trigger callbacks, CP state machine
+- **CP** (done) - Campaign info/check trigger callbacks with noexp interaction, CP state machine (start → parse → build → kill → refresh → complete), safety timer recovery
 - **DamageTracker** (next) - Single combined regex for all damage verbs
 - **Nav** (next) - Speedwalk to area start rooms via mapper, Vidblain handling
 - Wire up `xcp`, `go`, `nx`, `xrt` commands
