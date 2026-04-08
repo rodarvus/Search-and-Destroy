@@ -1,0 +1,2209 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+<muclient>
+<plugin
+   name="Search_and_Destroy"
+   author="Rodarvus"
+   id="a11200000053264400000001"
+   language="Lua"
+   purpose="Campaign, GQ, quest mob targeting and hunting"
+   save_state="y"
+   requires="4.90"
+   version="2.000"
+   date_written="2026-03-27"
+>
+<description trim="y">
+Search and Destroy v2 - Campaign/GQ/Quest mob management.
+Based on Crowley's and WinkleGold's Search and Destroy plugins.
+</description>
+</plugin>
+
+<!-- ============================================================ -->
+<!--                          VARIABLES                           -->
+<!-- ============================================================ -->
+<variables>
+   <variable name="snd_version">2.000</variable>
+</variables>
+
+<!-- ============================================================ -->
+<!--                           TIMERS                             -->
+<!-- ============================================================ -->
+<timers>
+   <!-- Delayed init: wait for GMCP handler to be ready -->
+   <timer name="tim_init"
+      second="0.5"
+      active_closed="y"
+      script="on_init_timer"
+      enabled="y"
+      one_shot="y"
+   ></timer>
+
+   <!-- Safety timer: force-disable parsing groups after 10s -->
+   <timer name="tim_parse_safety"
+      second="10"
+      script="on_parse_safety_timeout"
+      enabled="n"
+      one_shot="y"
+   ></timer>
+
+   <!-- Periodic state save -->
+   <timer name="tim_state_save"
+      second="30"
+      script="on_state_save_timer"
+      enabled="y"
+   ></timer>
+</timers>
+
+<!-- ============================================================ -->
+<!--                          ALIASES                             -->
+<!-- ============================================================ -->
+<aliases>
+   <!-- xhelp: show help -->
+   <alias name="als_xhelp"
+      match="^xhelp$"
+      enabled="y"
+      regexp="y"
+      script="cmd_xhelp"
+      sequence="100"
+   ></alias>
+
+   <!-- xset: settings -->
+   <alias name="als_xset"
+      match="^xset\s*(.*)$"
+      enabled="y"
+      regexp="y"
+      script="cmd_xset"
+      sequence="100"
+   ></alias>
+
+   <!-- xtest: testing/debug commands -->
+   <alias name="als_xtest"
+      match="^xtest\s*(.*)$"
+      enabled="y"
+      regexp="y"
+      script="cmd_xtest"
+      sequence="100"
+   ></alias>
+
+   <!-- xcp: target selection -->
+   <alias name="als_xcp"
+      match="^xcp\s*(.*)$"
+      enabled="y"
+      regexp="y"
+      script="cmd_xcp"
+      sequence="100"
+   ></alias>
+
+   <!-- go: navigate to target area -->
+   <alias name="als_go"
+      match="^go\s*(.*)$"
+      enabled="y"
+      regexp="y"
+      script="cmd_go"
+      sequence="100"
+   ></alias>
+
+   <!-- nx: next target action -->
+   <alias name="als_nx"
+      match="^nx$"
+      enabled="y"
+      regexp="y"
+      script="cmd_nx"
+      sequence="100"
+   ></alias>
+
+   <!-- ht: hunt trick -->
+   <alias name="als_ht"
+      match="^ht\s*(.*)$"
+      enabled="y"
+      regexp="y"
+      script="cmd_ht"
+      sequence="100"
+   ></alias>
+
+   <!-- qw: quick where -->
+   <alias name="als_qw"
+      match="^qw\s*(.*)$"
+      enabled="y"
+      regexp="y"
+      script="cmd_qw"
+      sequence="100"
+   ></alias>
+
+   <!-- qs: quick scan -->
+   <alias name="als_qs"
+      match="^qs\s*(.*)$"
+      enabled="y"
+      regexp="y"
+      script="cmd_qs"
+      sequence="100"
+   ></alias>
+
+   <!-- ah: auto-hunt -->
+   <alias name="als_ah"
+      match="^ah\s*(.*)$"
+      enabled="y"
+      regexp="y"
+      script="cmd_ah"
+      sequence="100"
+   ></alias>
+
+   <!-- xrt: retarget -->
+   <alias name="als_xrt"
+      match="^xrt\s*(.*)$"
+      enabled="y"
+      regexp="y"
+      script="cmd_xrt"
+      sequence="100"
+   ></alias>
+
+   <!-- kk: quick kill -->
+   <alias name="als_kk"
+      match="^kk$"
+      enabled="y"
+      regexp="y"
+      script="cmd_kk"
+      sequence="100"
+   ></alias>
+</aliases>
+
+<!-- ============================================================ -->
+<!--                         TRIGGERS                             -->
+<!-- ============================================================ -->
+<triggers>
+
+   <!-- ==================== CP INFO ==================== -->
+   <trigger name="trg_cp_info_level"
+      match="^Level Taken\.{8}: \[\s+(\d{1,3}) \]$"
+      enabled="n"
+      regexp="y"
+      omit_from_output="y"
+      script="on_cp_info_level"
+      group="grp_cp_info"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_cp_info_start"
+      match="^The targets for this campaign are:$"
+      enabled="n"
+      regexp="y"
+      omit_from_output="y"
+      script="on_cp_info_start"
+      group="grp_cp_info"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_cp_info_line"
+      match="^Find and kill 1 \* (.+) \((.+)\)$"
+      enabled="n"
+      regexp="y"
+      omit_from_output="y"
+      script="on_cp_info_line"
+      group="grp_cp_info"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_cp_info_end"
+      match="^(?!Find and kill 1 \* .+ \(.+\))"
+      enabled="n"
+      regexp="y"
+      omit_from_output="n"
+      script="on_cp_info_end"
+      group="grp_cp_info"
+      sequence="11"
+   ></trigger>
+
+   <!-- ==================== CP CHECK ==================== -->
+   <trigger name="trg_cp_check_line"
+      match="^You still have to kill \* (.+) \((.+?)(?: - Dead)?\)$"
+      enabled="n"
+      regexp="y"
+      omit_from_output="y"
+      script="on_cp_check_line"
+      group="grp_cp_check"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_cp_check_end"
+      match="^(?!You still have to kill \* .+ \(.+?(?: - Dead)?\))"
+      enabled="n"
+      regexp="y"
+      omit_from_output="n"
+      script="on_cp_check_end"
+      group="grp_cp_check"
+      sequence="11"
+   ></trigger>
+
+   <trigger name="trg_cp_check_dead_note"
+      match="^Note: Dead means that the target is dead, not that you have killed it\.$"
+      enabled="n"
+      regexp="y"
+      omit_from_output="y"
+      group="grp_cp_check"
+      sequence="10"
+   ></trigger>
+
+   <!-- ==================== CP EVENTS (always on) ==================== -->
+   <trigger name="trg_cp_mob_killed"
+      match="^Congratulations, that was one of your CAMPAIGN mobs!$"
+      enabled="y"
+      regexp="y"
+      script="on_cp_mob_killed"
+      group="grp_cp_events"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_cp_complete"
+      match="^CONGRATULATIONS! You have completed your campaign\.$"
+      enabled="y"
+      regexp="y"
+      script="on_cp_complete"
+      group="grp_cp_events"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_cp_cleared"
+      match="^Campaign cleared\.$"
+      enabled="y"
+      regexp="y"
+      script="on_cp_cleared"
+      group="grp_cp_events"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_cp_new_available"
+      match="^(?:(?:## )?You may now take another campaign\.|You may take (?:a campaign at this level|another campaign)\.)$"
+      enabled="y"
+      regexp="y"
+      script="on_cp_new_available"
+      group="grp_cp_events"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_cp_not_on"
+      match="^You are not currently on a campaign\.$"
+      enabled="y"
+      regexp="y"
+      script="on_cp_not_on"
+      group="grp_cp_events"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_cp_must_level"
+      match="^You must level to get a new campaign\.$"
+      enabled="y"
+      regexp="y"
+      script="on_cp_must_level"
+      group="grp_cp_events"
+      sequence="10"
+   ></trigger>
+
+   <!-- ==================== GQ INFO ==================== -->
+   <trigger name="trg_gq_info_quest_name"
+      match="^Quest Name\.\.\.\.\.\.\.\.\.: \[ Global quest # (\d{1,5}) \]$"
+      enabled="n"
+      regexp="y"
+      omit_from_output="y"
+      script="on_gq_info_quest_name"
+      group="grp_gq_info"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_gq_info_extended"
+      match="^Quest Status\.\.\.\.\.\.\.: \[ Extended \]$"
+      enabled="n"
+      regexp="y"
+      omit_from_output="y"
+      script="on_gq_info_extended"
+      group="grp_gq_info"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_gq_info_level"
+      match="^Level range\.\.\.\.\.\.\.\.: \[\s+(\d{1,3}) \] - \[\s+(\d{1,3}) \]$"
+      enabled="n"
+      regexp="y"
+      omit_from_output="y"
+      script="on_gq_info_level"
+      group="grp_gq_info"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_gq_info_line"
+      match="^Kill at least (\d+) \* (.+) \((.+)\)\.$"
+      enabled="n"
+      regexp="y"
+      omit_from_output="y"
+      script="on_gq_info_line"
+      group="grp_gq_info"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_gq_info_end"
+      match="^---------------------------------------------------------------------------$"
+      enabled="n"
+      regexp="y"
+      omit_from_output="n"
+      script="on_gq_info_end"
+      group="grp_gq_info"
+      sequence="10"
+   ></trigger>
+
+   <!-- ==================== GQ CHECK ==================== -->
+   <trigger name="trg_gq_check_line"
+      match="^You still have to kill ([1-3]) \* (.+) \((\S.+?)(?: - Dead)?\)$"
+      enabled="n"
+      regexp="y"
+      omit_from_output="y"
+      script="on_gq_check_line"
+      group="grp_gq_check"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_gq_check_end"
+      match="^(?!You still have to kill [1-3] \* .+ \(\S.+?(?: - Dead)?\))"
+      enabled="n"
+      regexp="y"
+      omit_from_output="n"
+      script="on_gq_check_end"
+      group="grp_gq_check"
+      sequence="11"
+   ></trigger>
+
+   <!-- ==================== GQ EVENTS (always on) ==================== -->
+   <trigger name="trg_gq_mob_killed"
+      match="^Congratulations, that was one of the GLOBAL QUEST mobs!$"
+      enabled="y"
+      regexp="y"
+      script="on_gq_mob_killed"
+      group="grp_gq_events"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_gq_joined"
+      match="^You have joined Global Quest # (\d{1,5})\.$"
+      enabled="y"
+      regexp="y"
+      script="on_gq_joined"
+      group="grp_gq_events"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_gq_started"
+      match="^Global Quest # (\d{1,5}) has now started!$"
+      enabled="y"
+      regexp="y"
+      script="on_gq_started"
+      group="grp_gq_events"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_gq_finished"
+      match="^You have finished this global quest\.$"
+      enabled="y"
+      regexp="y"
+      script="on_gq_finished"
+      group="grp_gq_events"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_gq_ended"
+      match="^Global Quest # (\d{1,5}) has (ended|been won)\.$"
+      enabled="y"
+      regexp="y"
+      script="on_gq_ended"
+      group="grp_gq_events"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_gq_not_started"
+      match="^Global Quest # (\d{1,5}) has not yet started\.$"
+      enabled="y"
+      regexp="y"
+      script="on_gq_not_started"
+      group="grp_gq_events"
+      sequence="10"
+   ></trigger>
+
+   <!-- ==================== HUNT TRICK ==================== -->
+   <trigger name="trg_ht_direction"
+      match="^(?:You are (?:almost )?certain that \w.+ is (north|south|east|west|up|down) from here\.|You are confident that \w.+ passed through here, heading (north|south|east|west|up|down)\.|The trail of \w.+ is confusing, but you&#39;re reasonably sure \w.+ headed (north|south|east|west|up|down)\.|There are traces of \w.+ having been here\. Perhaps they lead (north|south|east|west|up|down)\?|You have no idea what you&#39;re doing, but maybe \w.+ is (north|south|east|west|up|down)\?|You couldn&#39;t find a path to \w.+ from here\.)$"
+      enabled="n"
+      regexp="y"
+      script="on_ht_direction"
+      group="grp_hunt_trick"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_ht_portal"
+      match="^(?:You are (?:almost )?certain that \w.+ is through .+\.|You are confident that \w.+ passed through here, heading through .+\.|The trail of \w.+ is confusing, but you&#39;re reasonably sure \w.+ headed through .+\.|There are traces of \w.+ having been here\. Perhaps they lead through \w.+\?|You have no idea which way \w.+ went\.)$"
+      enabled="n"
+      regexp="y"
+      script="on_ht_direction"
+      group="grp_hunt_trick"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_ht_here"
+      match="^\w.+ is here!$"
+      enabled="n"
+      regexp="y"
+      script="on_ht_here"
+      group="grp_hunt_trick"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_ht_unable"
+      match="^You seem unable to hunt that target for some reason\.$"
+      enabled="n"
+      regexp="y"
+      script="on_ht_unable"
+      group="grp_hunt_trick"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_ht_not_found"
+      match="^No one in this area by the name &#39;\w.+&#39;\.$"
+      enabled="n"
+      regexp="y"
+      script="on_ht_not_found"
+      group="grp_hunt_trick"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_ht_fighting"
+      match="^(?:Not while you are fighting!|You can&#39;t hunt while (?:resting|sitting)\.|You dream about going on a nice hunting trip.*)$"
+      enabled="n"
+      regexp="y"
+      script="on_ht_abort"
+      group="grp_hunt_trick"
+      sequence="10"
+   ></trigger>
+
+   <!-- ==================== AUTO HUNT ==================== -->
+   <trigger name="trg_ah_direction"
+      match="^(?:You are (?:almost )?certain that \w.+ is (north|south|east|west|up|down) from here\.|You are confident that \w.+ passed through here, heading (north|south|east|west|up|down)\.|The trail of \w.+ is confusing, but you&#39;re reasonably sure \w.+ headed (north|south|east|west|up|down)\.|There are traces of \w.+ having been here\. Perhaps they lead (north|south|east|west|up|down)\?|You have no idea what you&#39;re doing, but maybe \w.+ is (north|south|east|west|up|down)\?)$"
+      enabled="n"
+      regexp="y"
+      script="on_ah_direction"
+      group="grp_auto_hunt"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_ah_here"
+      match="^\w.+ is here!$"
+      enabled="n"
+      regexp="y"
+      script="on_ah_here"
+      group="grp_auto_hunt"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_ah_not_found"
+      match="^No one in this area by the name|^You seem unable to hunt"
+      enabled="n"
+      regexp="y"
+      script="on_ah_not_found"
+      group="grp_auto_hunt"
+      sequence="10"
+   ></trigger>
+
+   <!-- ==================== QUICK WHERE ==================== -->
+   <trigger name="trg_qw_match"
+      match="^(\w.+?) is in (.+?)\s*(?:\((.+?)\))?\.$"
+      enabled="n"
+      regexp="y"
+      script="on_qw_match"
+      group="grp_quick_where"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_qw_no_match"
+      match="^No one by that name around here\.$|^There is no \w.+ around here\.$"
+      enabled="n"
+      regexp="y"
+      script="on_qw_no_match"
+      group="grp_quick_where"
+      sequence="10"
+   ></trigger>
+
+   <!-- ==================== NOEXP (always on) ==================== -->
+   <trigger name="trg_noexp_xp"
+      match="^You receive (\d+) experience points?\.$"
+      enabled="y"
+      regexp="y"
+      script="on_noexp_xp"
+      group="grp_noexp"
+      sequence="10"
+   ></trigger>
+
+   <trigger name="trg_noexp_level"
+      match="^Congratulations, hero, you have increased your level"
+      enabled="y"
+      regexp="y"
+      script="on_noexp_level"
+      group="grp_noexp"
+      sequence="10"
+   ></trigger>
+
+</triggers>
+
+<!-- ============================================================ -->
+<!--                           SCRIPT                             -->
+<!-- ============================================================ -->
+<script>
+<![CDATA[
+------------------------------------------------------------------------
+-- Search & Destroy v2 - Core Plugin
+-- Combines best features of Crowley's S&D and WinkleGold's S&D
+------------------------------------------------------------------------
+
+json = require "json"
+sqlite3 = require "lsqlite3"
+
+------------------------------------------------------------------------
+-- CONST: Immutable constants
+------------------------------------------------------------------------
+CONST = {
+   -- Plugin IDs
+   GMCP_HANDLER = "3e7dedbe37e44942dd46d264",
+   GMCP_MAPPER  = "b6eae87ccedd84f510b74714",
+   Z_ORDER      = "462b665ecb569efbf261422f",
+
+   -- Broadcast message numbers (Core -> GUI)
+   BCAST_FULL_STATE   = 100,
+   BCAST_TARGET_LIST  = 101,
+   BCAST_TARGET_CHANGED = 102,
+   BCAST_TARGET_CLEARED = 103,
+   BCAST_QUEST        = 104,
+   BCAST_ACTIVITY     = 105,
+   BCAST_NOEXP        = 106,
+   BCAST_GOTO_LIST    = 107,
+
+   -- Direction map
+   DIR_MAP = {
+      north = "n", south = "s", east = "e", west = "w", up = "u", down = "d"
+   },
+
+   -- Schema version for DB migrations
+   SCHEMA_VERSION = 1,
+
+   -- Note colors
+   COLORS = {
+      INFO            = "#FF5000",
+      INFO_HIGHLIGHT  = "#00B4E0",
+      IMPORTANT       = "#FFFFFF",
+      IMPORTANT_HL    = "#00FF00",
+      IMPORTANT_BG    = "#000080",
+      ERROR           = "#FFFFFF",
+      ERROR_HL        = "#FFE32E",
+      ERROR_BG        = "#650101",
+      DEBUG           = "#87CEFA",
+      DEBUG_HL        = "#FFD700",
+   },
+
+   -- Mob name words to omit during keyword guessing
+   OMIT_WORDS = {
+      ["a"] = true, ["an"] = true, ["and"] = true,
+      ["of"] = true, ["or"] = true, ["some"] = true, ["the"] = true,
+   },
+
+   -- Area-specific keyword filters (pattern -> replacement)
+   AREA_KEYWORD_FILTERS = {
+      ["adaldar"]   = {{f = "^.*(el)vish (%a*%s?%a+)$", g = "%1 %2"}},
+      ["bonds"]     = {{f = "^(.*[bgry]%a+) dragon$", g = "%1"}},
+      ["citadel"]   = {{f = "^([bgjlmsv]%a+) ([ap]r%a+[el]) .+$", g = "%1 %2"}},
+      ["elemental"] = {
+         {f = "^(%a+)%'(%a+) (%a+)$", g = "%1%2 %3"},
+         {f = "^wandering (%a+)%'(%a+) (%a+)$", g = "%1%2 %3"},
+      },
+      ["hatchling"] = {
+         {f = "^(%a+) dragon (egg)$", g = "%1 %2"},
+         {f = "^(%a+) dragon (hatchling)$", g = "%1 %2"},
+         {f = "^(%a+ %a+) dragon whelp$", g = "%1"},
+         {f = "^(%a+) dragon (whelp)$", g = "%1 %2"},
+      },
+      ["sirens"]    = {{f = "^miss ([%a']+)%s?(%a*).*%a$", g = "%1 %2"}},
+      ["sohtwo"]    = {
+         {f = "^(evil) %a+", g = "%1"},
+         {f = "^(good) %a+", g = "%1"},
+      },
+      ["verume"]    = {{f = "^lizardman (temple %a+)$", g = "%1"}},
+      ["wooble"]    = {
+         {f = "^sea (%a+)$", g = "%1"},
+         {f = "^sea (%a+ %a+)$", g = "%1"},
+      },
+   },
+
+   -- Hardcoded mob keyword exceptions (area -> mob -> keyword)
+   MOB_KEYWORD_EXCEPTIONS = {
+      ["aardington"] = {["a very large portrait"] = "large port"},
+      ["alehouse"] = {
+         ["a dancing male patron"] = "dancing male",
+         ["a dancing female patron"] = "dancing female",
+      },
+      ["anthrox"] = {
+         ["the little white rabbit"] = "rabb",
+         ["the bee"] = "worker bee",
+         ["an escaped creature"] = "prisoner creature",
+         ['a "business" man'] = "business man",
+      },
+      ["ddoom"] = {
+         ["a dangerous scorpion"] = "scorp",
+         ["Lwji, the Sunrise great warrior"] = "lwji",
+         ["Taji, the Sunset leader"] = "taji lead",
+         ["Taji's personal advisor"] = "pers advi",
+         ["Tjac, the Sunrise leader"] = "tjac lead",
+         ["Tjac's personal advisor"] = "sunr advis",
+         ["Yki, the great Sunset warrior"] = "yki",
+      },
+      ["deneria"] = {["High Priest of Miad'Bir"] = "high miad"},
+      ["desert"] = {["a village citizen"] = "citi"},
+      ["fields"] = {["a mutated goat"] = "goat"},
+      ["fortress"] = {
+         ["a grizzled goblin dressed in skins"] = "grizz gobl",
+         ["Blood Silk, Collector of souls, Queen of the spiders"] = "silk queen",
+      },
+      ["hell"] = {
+         ["a scrumptious chicken pot pie"] = "chicken pot pie",
+         ["a yummy vegetable pot pie"] = "vegetable pot pie",
+         ["a yummy beef pot pie"] = "beef pot pie",
+      },
+      ["illoria"] = {["the King and Queen's Guard"] = "pers guard"},
+      ["landofoz"] = {["one of Dorothy's uncles"] = "doroth uncle"},
+      ["laym"] = {["an elite guard of the church"] = "elit guar"},
+      ["livingmine"] = {
+         ["a member of the 'Cal tribe"] = "memb cal",
+         ["a member of the 'Sorr tribe"] = "memb sorr",
+         ["a member of the 'Tai tribe"] = "memb tai",
+         ["Dak'tai's shaman"] = "dakt shama",
+         ["the 'Tai chieftain"] = "tai chief",
+      },
+      ["longnight"] = {["Mr. Roberge"] = "car rober"},
+      ["losttime"] = {
+         ["T-Rex"] = "T-rex",
+         ["Great White Shark"] = "white shark",
+      },
+      ["manor"] = {
+         ["Aremata-Popua"] = "aremata-pop",
+         ["Aremata-Rorua"] = "aremata-ror",
+      },
+      ["masq"] = {
+         ["a gentleman on the way to the ball"] = "gentl",
+         ["a very attractive woman"] = "attr woman",
+      },
+      ["necro"] = {["the head necromancer's assistant"] = "old mage assist"},
+      ["northstar"] = {
+         ["a Blood Ring elite warrior"] = "elit warr",
+         ["Daryoon, a priest of nature"] = "dary pries",
+         ["Tristam, the Prince of the Orcs"] = "trist orc",
+      },
+      ["sanctity"] = {["a half-converted human"] = "human"},
+      ["siege"] = {
+         ["a kobold eating lunch"] = "kobold eating",
+         ["a large mole"] = "mole",
+         ["a very large firefly"] = "larg firef",
+         ["the fattest kobold ever"] = "fat kobold",
+         ["an oddly tall and clean kobold"] = "tall kobold",
+      },
+      ["snuckles"] = {
+         ["the snuckle"] = "male snuckle",
+         ["Sarah, the grieving snuckle"] = "sarah griev",
+      },
+      ["sohtwo"] = {
+         ["An evil form of Sagen"] = "notcarlsagen",
+         ["Angelic Demonspawn"] = "angelic",
+         ["Bubbly Obyron"] = "fuzzybunny",
+         ["Dejected Broud"] = "dejected",
+         ["Disagreeable Rumour"] = "obstinate",
+         ["Disoriented Dadrake"] = "letsturnlefthere",
+         ["Evil Aaeron"] = "shinythings",
+         ["Evil Althalus"] = "homeskillet",
+         ["Evil Belmont"] = "bridgetroll",
+         ["Evil Domain"] = "66",
+         ["Evil Euphonix"] = "ragbrai",
+         ["Evil Ghaan"] = "longghaan",
+         ["Evil Halo"] = "jackandcoke",
+         ["Evil Ikyu"] = "ickypoo",
+         ["Evil Justme"] = "helperisme",
+         ["Evil Kharpern"] = "kittyimm",
+         ["Evil KlauWaard"] = "tricksy",
+         ["Evil Kt"] = "ktkat",
+         ["Evil Lasher"] = "thearchitect",
+         ["Evil Madcatz"] = "mathizard",
+         ["Evil Maerchyng"] = "maerchyng",
+         ["Evil Morrigu"] = "morrigu",
+         ["Evil OrcWarrior"] = "sheepshagger",
+         ["Evil Pane"] = "painintheneck",
+         ["Evil Plaideleon"] = "crazycanadian",
+         ["Evil Rekhart"] = "hartsawreck",
+         ["Evil Sarlock"] = "l33td00d",
+         ["Evil Tela"] = "telllllllla",
+         ["Evil Timeghost"] = "floppyimm",
+         ["Good Tripitaka"] = "laketripitaka",
+         ["Evil Tymme"] = "hourglass",
+         ["Evil Vladia"] = "sexyvamp",
+         ["Evil Whitdjinn"] = "thundercat",
+         ["Evil Windjammer"] = "justsomeimm",
+         ["Evil Wolfe"] = "likeobybutbritish",
+         ["Evil Xyzzy"] = "weirdcode",
+         ["Good Aerianne"] = "pointyears",
+         ["Good Cadaver"] = "newbiehater",
+         ["Good Delight"] = "turkishdelight",
+         ["Good Dirtworm"] = "wormy",
+         ["Good Eclaboussure"] = "dropbearimm",
+         ["Good Filt"] = "plainolefilt",
+         ["Good Glimmer"] = "betterhalfofclaire",
+         ["Good Kinson"] = "upgradeboy",
+         ["Good Lumina"] = "thievesrus",
+         ["Good Oladon"] = "spellingbee",
+         ["Good Rhuli"] = "rulistheworld",
+         ["Good Sausage"] = "fatbreakfast",
+         ["Good Sirene"] = "warriorprincess",
+         ["Good Takihisis"] = "dragonlady",
+         ["Good Terrill"] = "askcitron",
+         ["Good Tyanon"] = "tieoneon",
+         ["Good Valkur"] = "demonlord",
+         ["Good Vilgan"] = "unabridged",
+         ["Good Xantcha"] = "pokerimm",
+         ["Good Zane"] = "inzanity",
+         ["Goodie Goodie Jaenelle"] = "goodie",
+         ["Impatient Styliann"] = "willyouhurryup",
+         ["Kinda-Sorta Good Whisper"] = "kinda",
+         ["Master Shen"] = "master",
+         ["Mathematical Mordist"] = "complex",
+         ["Nascaard Rezit"] = "nascaard",
+         ["Pandemonium Penthesilea"] = "pandemonium",
+         ["Record Holding Guinness"] = "cantwriteatall",
+         ["Singing Paramore"] = "failedmusician",
+         ["Sith Lord Neeper"] = "sith",
+         ["Smurfy Laren"] = "lovethemsmurfs",
+         ["Sober Citron"] = "sober",
+         ["Socialite Arthon"] = "airhead",
+         ["Straight Dreamfyre"] = "straight",
+         ["The cool version of Xeno"] = "onex",
+         ["The Pancake Flat"] = "pancake",
+         ["Tjopping Quadrapus"] = "tjopping",
+         ["Unhelpful Claire"] = "cookies",
+         ["Unremarkable Korridel"] = "unremarkable",
+         ["Unrestrained Elvandar"] = "omgsheneverstopstalking",
+         ["Warsnail Anaristos"] = "warsnail",
+         ["Cuddlebear Koala"] = "cuddlebear",
+         ["(Helper) Fenix"] = "helper",
+      },
+      ["stone"] = {["a Citadel of Stone Cityguard"] = "cit guar"},
+      ["talsa"] = {["a dwarven mercenary"] = "dwar merc"},
+      ["wooble"] = {["the Sea Snake Master-at-Arms"] = "snake mast"},
+      ["yarr"] = {
+         ["a pirate sorting the treasure"] = "pirat sort",
+         ["a pirate stealing some treasure"] = "pirat steal",
+      },
+      ["zoo"] = {["a black-footed pine marten"] = "pine marte"},
+   },
+
+   -- Default area start rooms (from Crowley's plugin)
+   DEFAULT_START_ROOMS = {
+      -- Continents
+      ["abend"]     = {roomid = 24909},
+      ["alagh"]     = {roomid = 3224},
+      ["gelidus"]   = {roomid = 18780},
+      ["mesolar"]   = {roomid = 12664},
+      ["southern"]  = {roomid = 5192},
+      ["uncharted"] = {roomid = 7701},
+      ["vidblain"]  = {roomid = 33570, vidblain = true},
+      -- A
+      ["aardington"] = {roomid = 47509},
+      ["academy"]   = {roomid = 35233},
+      ["adaldar"]   = {roomid = 34400},
+      ["afterglow"] = {roomid = 38134},
+      ["agroth"]    = {roomid = 11027},
+      ["ahner"]     = {roomid = 30129},
+      ["alehouse"]  = {roomid = 885},
+      ["amazon"]    = {roomid = 1409},
+      ["amusement"] = {roomid = 29282},
+      ["andarin"]   = {roomid = 2399},
+      ["annwn"]     = {roomid = 28963},
+      ["anthrox"]   = {roomid = 3993},
+      ["arboretum"] = {roomid = 39100},
+      ["arena"]     = {roomid = 25768},
+      ["arisian"]   = {roomid = 28144},
+      ["ascent"]    = {roomid = 43150},
+      ["asherodan"] = {roomid = 37400, vidblain = true},
+      ["astral"]    = {roomid = 27882},
+      ["atlantis"]  = {roomid = 10573},
+      ["autumn"]    = {roomid = 13839},
+      ["avian"]     = {roomid = 4334},
+      ["aylor"]     = {roomid = 32418},
+      -- B
+      ["bazaar"]    = {roomid = 34454},
+      ["beer"]      = {roomid = 20062},
+      ["believer"]  = {roomid = 25940},
+      ["blackrose"] = {roomid = 1817},
+      ["bliss"]     = {roomid = 29988},
+      ["bonds"]     = {roomid = 23411},
+      -- C
+      ["caldera"]    = {roomid = 26341},
+      ["callhero"]   = {roomid = 33031},
+      ["camps"]      = {roomid = 4714},
+      ["canyon"]     = {roomid = 25551},
+      ["caravan"]    = {roomid = 16071},
+      ["cards"]      = {roomid = 6255},
+      ["carnivale"]  = {roomid = 28635},
+      ["cataclysm"]  = {roomid = 19976},
+      ["cathedral"]  = {roomid = 27497},
+      ["cats"]       = {roomid = 40900},
+      ["chasm"]      = {roomid = 29446},
+      ["chessboard"] = {roomid = 25513},
+      ["childsplay"] = {roomid = 678},
+      ["cineko"]     = {roomid = 1507},
+      ["citadel"]    = {roomid = 14963},
+      ["conflict"]   = {roomid = 27711},
+      ["coral"]      = {roomid = 4565},
+      ["cougarian"]  = {roomid = 14311},
+      ["cove"]       = {roomid = 49941},
+      ["cradle"]     = {roomid = 11267},
+      ["crynn"]      = {roomid = 43800},
+      -- D
+      ["damned"]      = {roomid = 10469},
+      ["darklight"]   = {roomid = 19642, vidblain = true},
+      ["darkside"]    = {roomid = 15060},
+      ["ddoom"]       = {roomid = 4193},
+      ["deadlights"]  = {roomid = 16856},
+      ["deathtrap"]   = {roomid = 1767},
+      ["deneria"]     = {roomid = 35006},
+      ["desert"]      = {roomid = 20186},
+      ["desolation"]  = {roomid = 19532},
+      ["dhalgora"]    = {roomid = 16755},
+      ["diatz"]       = {roomid = 1254},
+      ["diner"]       = {roomid = 36700},
+      ["dortmund"]    = {roomid = 16577},
+      ["drageran"]    = {roomid = 25894},
+      ["dread"]       = {roomid = 26075},
+      ["dsr"]         = {roomid = 30030},
+      ["dundoom"]     = {roomid = 25661},
+      ["dunoir"]      = {roomid = 14222},
+      ["duskvalley"]  = {roomid = 37301},
+      ["dynasty"]     = {roomid = 30799},
+      -- E
+      ["earthlords"]  = {roomid = 42000},
+      ["earthplane"]  = {roomid = 1354},
+      ["elemental"]   = {roomid = 41624},
+      ["empire"]      = {roomid = 32203},
+      ["empyrean"]    = {roomid = 14042},
+      ["entropy"]     = {roomid = 29773},
+      -- F
+      ["fantasy"]     = {roomid = 15205},
+      ["farm"]        = {roomid = 10676},
+      ["fayke"]       = {roomid = 30418},
+      ["fens"]        = {roomid = 16528},
+      ["fields"]      = {roomid = 29232},
+      ["firebird"]    = {roomid = 32885},
+      ["firenation"]  = {roomid = 41879},
+      ["fireswamp"]   = {roomid = 34755},
+      ["fortress"]    = {roomid = 31835},
+      ["fortune"]     = {roomid = 38561},
+      ["fractured"]   = {roomid = 17033},
+      ["ft1"]         = {roomid = 1205},
+      ["ftii"]        = {roomid = 26673},
+      -- G
+      ["gallows"]     = {roomid = 4344},
+      ["gathering"]   = {roomid = 36451},
+      ["gauntlet"]    = {roomid = 31652},
+      ["gilda"]       = {roomid = 4243},
+      ["glamdursil"]  = {roomid = 35055},
+      ["glimmerdim"]  = {roomid = 26252},
+      ["gnomalin"]    = {roomid = 34397},
+      ["goldrush"]    = {roomid = 15014},
+      ["graveyard"]   = {roomid = 28918},
+      ["greece"]      = {roomid = 2089},
+      ["gwillim"]     = {roomid = 25974},
+      -- H
+      ["hades"]       = {roomid = 29161},
+      ["hatchling"]   = {roomid = 34670},
+      ["hawklord"]    = {roomid = 40550},
+      ["hedge"]       = {roomid = 15146},
+      ["helegear"]    = {roomid = 30699},
+      ["hell"]        = {roomid = 30984},
+      ["hoard"]       = {roomid = 1675},
+      ["hodgepodge"]  = {roomid = 30469},
+      ["horath"]      = {roomid = 91},
+      ["horizon"]     = {roomid = 31959},
+      -- I
+      ["illoria"]     = {roomid = 10420},
+      ["imagi"]       = {roomid = 36800},
+      ["imperial"]    = {roomid = 16966, vidblain = true},
+      ["infamy"]      = {roomid = 26641},
+      ["infest"]      = {roomid = 16165},
+      ["insan"]       = {roomid = 6850},
+      -- J
+      ["jenny"]       = {roomid = 29637},
+      ["jotun"]       = {roomid = 31508},
+      -- K
+      ["kearvek"]     = {roomid = 29722},
+      ["kerofk"]      = {roomid = 16405},
+      ["ketu"]        = {roomid = 35114},
+      ["kingsholm"]   = {roomid = 27522},
+      ["knossos"]     = {roomid = 28193},
+      ["kobaloi"]     = {roomid = 10691},
+      ["kultiras"]    = {roomid = 31161},
+      -- L
+      ["lab"]         = {roomid = 28684},
+      ["labyrinth"]   = {roomid = 31405},
+      ["lagoon"]      = {roomid = 30549},
+      ["landofoz"]    = {roomid = 510},
+      ["laym"]        = {roomid = 6005},
+      ["legend"]      = {roomid = 16224},
+      ["lemdagor"]    = {roomid = 1966},
+      ["lidnesh"]     = {roomid = 27995},
+      ["livingmine"]  = {roomid = 37008},
+      ["longnight"]   = {roomid = 26367},
+      ["losttime"]    = {roomid = 28584},
+      ["lowlands"]    = {roomid = 28044},
+      ["lplanes"]     = {roomid = 29364},
+      -- M
+      ["maelstrom"]   = {roomid = 38058},
+      ["manor"]       = {roomid = 10621},
+      ["masq"]        = {roomid = 29840},
+      ["mayhem"]      = {roomid = 1866},
+      ["melody"]      = {roomid = 14172},
+      ["minos"]       = {roomid = 20472},
+      ["mistridge"]   = {roomid = 4491},
+      ["monastery"]   = {roomid = 15756},
+      ["mudwog"]      = {roomid = 2347},
+      -- N
+      ["nanjiki"]     = {roomid = 11203},
+      ["necro"]       = {roomid = 29922},
+      ["nenukon"]     = {roomid = 31784},
+      ["newthalos"]   = {roomid = 23853},
+      ["ninehells"]   = {roomid = 4613},
+      ["northstar"]   = {roomid = 11127},
+      ["nottingham"]  = {roomid = 11077},
+      ["nulan"]       = {roomid = 37900},
+      ["nursing"]     = {roomid = 31977},
+      ["nynewoods"]   = {roomid = 23562},
+      -- O
+      ["oceanpark"]   = {roomid = 39600},
+      ["omentor"]     = {roomid = 15579, vidblain = true},
+      ["ooku"]        = {roomid = 39000},
+      ["origins"]     = {roomid = 35900},
+      ["orlando"]     = {roomid = 30331},
+      -- P
+      ["paradise"]    = {roomid = 29624},
+      ["partroxis"]   = {roomid = 5814},
+      ["peninsula"]   = {roomid = 35701},
+      ["petstore"]    = {roomid = 995},
+      ["pompeii"]     = {roomid = 57},
+      ["promises"]    = {roomid = 25819},
+      ["prosper"]     = {roomid = 28268},
+      -- Q
+      ["qong"]        = {roomid = 16115},
+      ["quarry"]      = {roomid = 23510},
+      -- R
+      ["radiance"]    = {roomid = 19805},
+      ["raga"]        = {roomid = 19861},
+      ["raukora"]     = {roomid = 6040},
+      ["rebellion"]   = {roomid = 10305},
+      ["remcon"]      = {roomid = 25837},
+      ["reme"]        = {roomid = 32703},
+      ["rosewood"]    = {roomid = 6901},
+      ["ruins"]       = {roomid = 16805},
+      -- S
+      ["sagewood"]    = {roomid = 28754},
+      ["sahuagin"]    = {roomid = 34592},
+      ["salt"]        = {roomid = 4538},
+      ["sanctity"]    = {roomid = 10518},
+      ["sanctum"]     = {roomid = 15307},
+      ["sandcastle"]  = {roomid = 37701},
+      ["sanguine"]    = {roomid = 15436},
+      ["scarred"]     = {roomid = 34036},
+      ["sendhian"]    = {roomid = 20288, vidblain = true},
+      ["sennarre"]    = {roomid = 15491},
+      ["shadowsend"]  = {roomid = 40096},
+      ["shouggoth"]   = {roomid = 34087},
+      ["siege"]       = {roomid = 43265},
+      ["sirens"]      = {roomid = 16298},
+      ["slaughter"]   = {roomid = 1601},
+      ["snuckles"]    = {roomid = 182},
+      ["soh"]         = {roomid = 25611},
+      ["sohtwo"]      = {roomid = 30752},
+      ["solan"]       = {roomid = 23713},
+      ["songpalace"]  = {roomid = 47013},
+      ["spyreknow"]   = {roomid = 34800},
+      ["stone"]       = {roomid = 11386},
+      ["storm"]       = {roomid = 6304},
+      ["stormhaven"]  = {roomid = 20649},
+      ["stronghold"]  = {roomid = 20572},
+      ["stuff"]       = {roomid = 40400},
+      -- T
+      ["takeda"]      = {roomid = 15952},
+      ["talsa"]       = {roomid = 26917},
+      ["temple"]      = {roomid = 31597},
+      ["tanra"]       = {roomid = 46913},
+      ["terra"]       = {roomid = 19679},
+      ["terramire"]   = {roomid = 4493},
+      ["thieves"]     = {roomid = 7},
+      ["tilule"]      = {roomid = 39771},
+      ["times"]       = {roomid = 28463},
+      ["tirna"]       = {roomid = 20136},
+      ["titan"]       = {roomid = 38234},
+      ["tol"]         = {roomid = 16325},
+      ["tombs"]       = {roomid = 15385},
+      -- U
+      ["umari"]       = {roomid = 36601},
+      ["underdark"]   = {roomid = 27341},
+      ["uplanes"]     = {roomid = 29364},
+      ["uprising"]    = {roomid = 15382},
+      -- V
+      ["vale"]        = {roomid = 1036},
+      ["verdure"]     = {roomid = 24090},
+      ["verume"]      = {roomid = 30607},
+      ["village"]     = {roomid = 30850},
+      ["vlad"]        = {roomid = 15970},
+      ["volcano"]     = {roomid = 6091},
+      -- W
+      ["weather"]     = {roomid = 40499},
+      ["werewood"]    = {roomid = 30956},
+      ["wildwood"]    = {roomid = 322},
+      ["winter"]      = {roomid = 1306},
+      ["wizards"]     = {roomid = 31316},
+      ["wonders"]     = {roomid = 32981},
+      ["wooble"]      = {roomid = 11335},
+      ["woodelves"]   = {roomid = 32199},
+      ["wtc"]         = {roomid = 37895},
+      ["wyrm"]        = {roomid = 28847},
+      -- X
+      ["xmas"]        = {roomid = 6212},
+      ["xylmos"]      = {roomid = 472},
+      -- Y
+      ["yarr"]        = {roomid = 30281},
+      ["ygg"]         = {roomid = 24186},
+      ["yurgach"]     = {roomid = 29450},
+      -- Z
+      ["zangar"]      = {roomid = 6164},
+      ["zodiac"]      = {roomid = 15857},
+      ["zoo"]         = {roomid = 5920},
+      ["zyian"]       = {roomid = 729},
+   },
+
+   -- Areas known to be non-questable
+   NOQUEST_AREAS = {
+      -- Manor variations
+      "manor1", "manor3", "manorisle", "manormount", "manorsea",
+      "manorville", "manorwoods",
+      -- Epic areas
+      "blackclaw", "geniewish", "icefall", "inferno", "oradrin",
+      "transcend", "winds",
+      -- Other non-quest
+      "badtrip", "birthday", "seaking",
+      -- Clan halls
+      "amazonclan", "bard", "bootcamp", "cabal", "chaos", "crimson",
+      "crusaders", "daoine", "doh", "dominion", "dragon", "druid",
+      "emerald", "gaardian", "imperium", "light", "loqui", "masaki",
+      "perdition", "pyre", "romani", "seekers", "shadokil", "tanelorn",
+      "tao", "touchstone", "twinlobe", "vanir", "watchmen",
+      -- Closed/inaccessible
+      "baal", "hook", "retri", "rhabdo", "rogues", "xunti",
+      "challenge", "immhomes", "lasertwo", "limbo", "lualand",
+      "midgaard", "oldclanone", "oldclantwo", "oldclanthr",
+      "oldclanfou", "vault", "warzone", "wolfmaze",
+   },
+
+   -- Vidblain areas
+   VIDBLAIN_AREAS = {
+      "asherodan", "darklight", "imperial", "omentor", "sendhian", "vidblain",
+   },
+}
+
+------------------------------------------------------------------------
+-- Util: Stateless utility functions
+------------------------------------------------------------------------
+local lua_error = error  -- save built-in error() before Util.error overwrites it
+Util = {}
+
+--- Retrieve GMCP data via the handler plugin
+function Util.gmcp(path)
+   local ret, datastring = CallPlugin(CONST.GMCP_HANDLER, "gmcpdata_as_string", path)
+   if ret ~= 0 or not datastring or datastring == "" then
+      return nil
+   end
+   local fn = loadstring("return " .. datastring)
+   if fn then
+      return fn()
+   end
+   return nil
+end
+
+--- Send a GMCP packet via the handler plugin
+function Util.send_gmcp(data)
+   CallPlugin(CONST.GMCP_HANDLER, "Send_GMCP_Packet", data)
+end
+
+--- Query the mapper database
+function Util.map_query(sql)
+   return CallPlugin(CONST.GMCP_MAPPER, "map_find_query", sql)
+end
+
+--- Escape a string for SQL: wraps in single quotes, doubles internal quotes
+function Util.fixsql(s)
+   if s then
+      return "'" .. (string.gsub(tostring(s), "'", "''")) .. "'"
+   else
+      return "NULL"
+   end
+end
+
+--- Trim leading and trailing whitespace
+function Util.trim(s)
+   if not s then return "" end
+   return s:match("^%s*(.-)%s*$")
+end
+
+--- Split string by delimiter pattern (returns table of tokens)
+function Util.split(str, pattern)
+   local result = {}
+   for token in string.gmatch(str, pattern or "[^%s]+") do
+      result[#result + 1] = token
+   end
+   return result
+end
+
+--- Strip Aardwolf color codes from a string
+function Util.strip_colours(s)
+   if not s then return "" end
+   s = s:gsub("@@", "\0")
+   s = s:gsub("@%-", "~")
+   s = s:gsub("@x%d?%d?%d?", "")
+   s = s:gsub("@.([^@]*)", "%1")
+   return (s:gsub("%z", "@"))
+end
+
+--- Truncate string to max length, appending "..." if truncated
+function Util.ellipsify(s, maxlen)
+   if not s then return "" end
+   maxlen = maxlen or 20
+   if #s <= maxlen then return s end
+   return s:sub(1, maxlen - 3) .. "..."
+end
+
+--- Print an info note (alternating colors)
+function Util.info(...)
+   Util._note({...}, CONST.COLORS.INFO, CONST.COLORS.INFO_HIGHLIGHT)
+end
+
+--- Print an error note
+function Util.error(...)
+   Util._note({...}, CONST.COLORS.ERROR, CONST.COLORS.ERROR_HL, CONST.COLORS.ERROR_BG)
+end
+
+--- Print an important note
+function Util.important(...)
+   Util._note({...}, CONST.COLORS.IMPORTANT, CONST.COLORS.IMPORTANT_HL, CONST.COLORS.IMPORTANT_BG)
+end
+
+--- Print a debug note (only when debug mode is on)
+function Util.debug(...)
+   if Config.get("debug_mode") == "on" then
+      ColourTell(CONST.COLORS.DEBUG_HL, "", "DEBUG: ")
+      Util._note({...}, CONST.COLORS.DEBUG, CONST.COLORS.DEBUG_HL)
+   end
+end
+
+--- Internal: print a note with alternating colors
+function Util._note(messages, color1, color2, bg)
+   bg = bg or ""
+   local c1, c2 = color1, color2
+   for _, msg in ipairs(messages) do
+      ColourTell(c1, bg, tostring(msg))
+      c1, c2 = c2, c1
+   end
+   Note("")
+end
+
+--- Banker's rounding
+function Util.round(x)
+   if x == 0 then return 0 end
+   if (x + 0.5) % 2 == 0 then
+      return math.floor(x + 0.5)
+   else
+      return math.ceil(x - 0.5)
+   end
+end
+
+------------------------------------------------------------------------
+-- Config: User settings load/save
+------------------------------------------------------------------------
+Config = {
+   _settings = {},
+   _dirty = false,
+}
+
+-- Default setting values
+Config._defaults = {
+   -- Action modes
+   xcp_action_mode    = "qw",      -- qw or ht
+   nx_action          = "smartscan", -- smartscan, qs, or qw
+   quick_kill_command = "k",
+   -- Auto-features
+   noexp_auto         = "on",
+   noexp_tnl_cutoff   = "0",
+   autocon            = "off",
+   -- Display
+   silent_mode        = "off",
+   debug_mode         = "off",
+   table_notes        = "on",
+   table_width        = "80",
+   -- Sound (future)
+   sound              = "off",
+   -- GQ
+   gq_extra_aliases   = "on",
+}
+
+function Config.load()
+   for key, default in pairs(Config._defaults) do
+      local val = GetVariable("snd_" .. key)
+      Config._settings[key] = val or default
+   end
+end
+
+function Config.save()
+   if not Config._dirty then return end
+   for key, val in pairs(Config._settings) do
+      SetVariable("snd_" .. key, val)
+   end
+   Config._dirty = false
+end
+
+function Config.get(key)
+   return Config._settings[key] or Config._defaults[key]
+end
+
+function Config.set(key, value)
+   if Config._defaults[key] == nil then
+      Util.error("Unknown setting: ", key)
+      return false
+   end
+   Config._settings[key] = value
+   Config._dirty = true
+   Util.debug("Config set ", key, " = ", value)
+   return true
+end
+
+------------------------------------------------------------------------
+-- DB: SQLite database operations
+------------------------------------------------------------------------
+DB = {
+   _db = nil,      -- handle for Search_and_Destroy.db
+   _path = nil,
+}
+
+function DB.get_path()
+   if not DB._path then
+      DB._path = GetPluginInfo(GetPluginID(), 20) .. "Search_and_Destroy.db"
+   end
+   return DB._path
+end
+
+function DB.open()
+   if DB._db then return DB._db end
+   DB._db = sqlite3.open(DB.get_path())
+   if not DB._db then
+      Util.error("Failed to open database: ", DB.get_path())
+   end
+   return DB._db
+end
+
+function DB.close()
+   if DB._db then
+      DB._db:close()
+      DB._db = nil
+   end
+end
+
+--- Execute SQL in a transaction
+function DB.execute_transaction(statements)
+   local db = DB.open()
+   db:execute("BEGIN TRANSACTION;")
+   for _, sql in ipairs(statements) do
+      local rc = db:execute(sql)
+      if rc ~= 0 then
+         local err = db:errmsg()
+         db:execute("ROLLBACK;")
+         Util.error("DB error: ", err)
+         return false, err
+      end
+   end
+   db:execute("COMMIT;")
+   return true
+end
+
+--- Execute a single SQL statement, return result rows as table
+function DB.query(sql)
+   local db = DB.open()
+   local results = {}
+   for row in db:nrows(sql) do
+      results[#results + 1] = row
+   end
+   return results
+end
+
+--- Execute a single SQL statement (no results)
+function DB.execute(sql)
+   local db = DB.open()
+   local rc = db:execute(sql)
+   if rc ~= 0 then
+      Util.debug("DB.execute error: ", db:errmsg(), " SQL: ", sql)
+   end
+   return rc == 0
+end
+
+--- Get current schema version
+function DB.get_version()
+   local db = DB.open()
+   for row in db:nrows("PRAGMA user_version") do
+      return row.user_version
+   end
+   return 0
+end
+
+--- Set schema version
+function DB.set_version(v)
+   DB.execute(string.format("PRAGMA user_version = %d;", v))
+end
+
+--- Initialize database: create tables if needed, run migrations
+function DB.init()
+   local db = DB.open()
+   local version = DB.get_version()
+
+   if version < 1 then
+      Util.info("Creating Search & Destroy database...")
+      DB.create_schema()
+      DB.seed_start_rooms()
+      DB.seed_mob_overrides()
+      DB.set_version(CONST.SCHEMA_VERSION)
+      Util.info("Database ready.")
+   elseif version < CONST.SCHEMA_VERSION then
+      Util.info("Migrating database from v", tostring(version), " to v", tostring(CONST.SCHEMA_VERSION), "...")
+      DB.migrate(version)
+      DB.set_version(CONST.SCHEMA_VERSION)
+      Util.info("Migration complete.")
+   end
+end
+
+function DB.create_schema()
+   DB.execute([[
+      CREATE TABLE IF NOT EXISTS mobs (
+         mob         TEXT NOT NULL COLLATE NOCASE,
+         room        TEXT COLLATE NOCASE,
+         roomid      INTEGER NOT NULL,
+         zone        TEXT NOT NULL,
+         freq        INTEGER NOT NULL DEFAULT 0,
+         seen_count  INTEGER NOT NULL DEFAULT 0,
+         kill_count  INTEGER NOT NULL DEFAULT 0,
+         updated_at  INTEGER,
+         PRIMARY KEY (mob, roomid)
+      );
+   ]])
+   DB.execute("CREATE INDEX IF NOT EXISTS idx_mobs_zone ON mobs(zone);")
+   DB.execute("CREATE INDEX IF NOT EXISTS idx_mobs_roomid ON mobs(roomid);")
+
+   DB.execute([[
+      CREATE TABLE IF NOT EXISTS areas (
+         key         TEXT PRIMARY KEY,
+         name        TEXT NOT NULL,
+         minlvl      INTEGER DEFAULT 0,
+         maxlvl      INTEGER DEFAULT 300,
+         lock_level  INTEGER DEFAULT 0,
+         start_room  INTEGER,
+         noquest     INTEGER DEFAULT 0,
+         vidblain    INTEGER DEFAULT 0,
+         user_key    TEXT
+      );
+   ]])
+
+   DB.execute([[
+      CREATE TABLE IF NOT EXISTS mob_overrides (
+         mob_name    TEXT NOT NULL COLLATE NOCASE,
+         area_id     TEXT NOT NULL,
+         keyword     TEXT,
+         no_hunt     INTEGER DEFAULT 0,
+         no_where    INTEGER DEFAULT 0,
+         no_scan     INTEGER DEFAULT 0,
+         goto_room   INTEGER,
+         comment     TEXT,
+         PRIMARY KEY (mob_name, area_id)
+      );
+   ]])
+
+   DB.execute([[
+      CREATE TABLE IF NOT EXISTS start_rooms (
+         area_key      TEXT NOT NULL PRIMARY KEY,
+         area_longname TEXT,
+         roomid        INTEGER NOT NULL,
+         user_set      INTEGER DEFAULT 0
+      );
+   ]])
+end
+
+--- Seed start_rooms table from CONST.DEFAULT_START_ROOMS
+function DB.seed_start_rooms()
+   local stmts = {}
+   for key, data in pairs(CONST.DEFAULT_START_ROOMS) do
+      stmts[#stmts + 1] = string.format(
+         "INSERT OR IGNORE INTO start_rooms (area_key, roomid, user_set) VALUES (%s, %d, 0);",
+         Util.fixsql(key), data.roomid
+      )
+   end
+   -- Batch in chunks of 50
+   local batch = {}
+   for i, sql in ipairs(stmts) do
+      batch[#batch + 1] = sql
+      if #batch >= 50 then
+         DB.execute_transaction(batch)
+         batch = {}
+      end
+   end
+   if #batch > 0 then
+      DB.execute_transaction(batch)
+   end
+end
+
+--- Seed mob_overrides from CONST.MOB_KEYWORD_EXCEPTIONS
+function DB.seed_mob_overrides()
+   local stmts = {}
+   for area, mobs in pairs(CONST.MOB_KEYWORD_EXCEPTIONS) do
+      for mob_name, keyword in pairs(mobs) do
+         stmts[#stmts + 1] = string.format(
+            "INSERT OR IGNORE INTO mob_overrides (mob_name, area_id, keyword) VALUES (%s, %s, %s);",
+            Util.fixsql(mob_name), Util.fixsql(area), Util.fixsql(keyword)
+         )
+      end
+   end
+   local batch = {}
+   for i, sql in ipairs(stmts) do
+      batch[#batch + 1] = sql
+      if #batch >= 50 then
+         DB.execute_transaction(batch)
+         batch = {}
+      end
+   end
+   if #batch > 0 then
+      DB.execute_transaction(batch)
+   end
+end
+
+function DB.migrate(from_version)
+   -- Future migrations go here
+   -- if from_version < 2 then ... end
+end
+
+--- Look up mob locations from S&D database
+function DB.find_mob(mob_name, zone)
+   local where = string.format("mob = %s", Util.fixsql(mob_name))
+   if zone and zone ~= "" then
+      where = where .. string.format(" AND zone = %s", Util.fixsql(zone))
+   end
+   return DB.query("SELECT * FROM mobs WHERE " .. where .. " ORDER BY freq DESC, kill_count DESC;")
+end
+
+--- Look up start room for an area
+function DB.get_start_room(area_key)
+   local rows = DB.query(string.format(
+      "SELECT roomid FROM start_rooms WHERE area_key = %s LIMIT 1;",
+      Util.fixsql(area_key)
+   ))
+   if #rows > 0 then
+      return rows[1].roomid
+   end
+   -- Fallback to CONST
+   local default = CONST.DEFAULT_START_ROOMS[area_key]
+   if default then
+      return default.roomid
+   end
+   return nil
+end
+
+--- Set start room for an area (user override)
+function DB.set_start_room(area_key, roomid, area_longname)
+   DB.execute(string.format(
+      "INSERT OR REPLACE INTO start_rooms (area_key, area_longname, roomid, user_set) VALUES (%s, %s, %d, 1);",
+      Util.fixsql(area_key), Util.fixsql(area_longname), roomid
+   ))
+end
+
+--- Look up mob override (custom keyword, nohunt, etc.)
+function DB.get_mob_override(mob_name, area_id)
+   local rows = DB.query(string.format(
+      "SELECT * FROM mob_overrides WHERE mob_name = %s AND area_id = %s LIMIT 1;",
+      Util.fixsql(mob_name), Util.fixsql(area_id)
+   ))
+   return rows[1]  -- nil if not found
+end
+
+--- Record or update a mob sighting
+function DB.record_mob(mob_name, room_name, roomid, zone)
+   DB.execute(string.format(
+      "INSERT INTO mobs (mob, room, roomid, zone, freq, seen_count, updated_at) VALUES (%s, %s, %d, %s, 1, 1, %d) " ..
+      "ON CONFLICT(mob, roomid) DO UPDATE SET freq = freq + 1, seen_count = seen_count + 1, " ..
+      "room = excluded.room, updated_at = excluded.updated_at;",
+      Util.fixsql(mob_name), Util.fixsql(room_name), roomid,
+      Util.fixsql(zone), os.time()
+   ))
+end
+
+--- Record a mob kill
+function DB.record_kill(mob_name, zone)
+   DB.execute(string.format(
+      "UPDATE mobs SET kill_count = kill_count + 1 WHERE mob = %s AND zone = %s;",
+      Util.fixsql(mob_name), Util.fixsql(zone)
+   ))
+end
+
+------------------------------------------------------------------------
+-- State: Central state container
+------------------------------------------------------------------------
+State = {
+   _room = {rmid = -1, arid = "", name = "", exits = {}, maze = false},
+   _prev_room = {rmid = -2, arid = ""},
+   _target = nil,  -- {keyword, name, room_name, area, index, activity}
+   _activity = "none",  -- "cp", "gq", "quest", "none"
+   _char_state = "0",
+   _noexp = false,
+   _level = 0,
+   _tier = 0,
+   _tnl = 0,
+   _dirty = false,
+}
+
+function State.get_room()
+   return State._room
+end
+
+function State.get_target()
+   return State._target
+end
+
+function State.get_activity()
+   return State._activity
+end
+
+function State.set_activity(act)
+   if State._activity ~= act then
+      State._activity = act
+      State._dirty = true
+      State.broadcast_activity()
+   end
+end
+
+function State.set_target(target)
+   State._target = target
+   State._dirty = true
+   if target then
+      State.broadcast(CONST.BCAST_TARGET_CHANGED, json.encode(target))
+   else
+      State.broadcast(CONST.BCAST_TARGET_CLEARED, "")
+   end
+end
+
+function State.clear_target()
+   State.set_target(nil)
+end
+
+function State.update_room(ri)
+   State._prev_room = State._room
+   State._room = {
+      rmid = ri.num or -1,
+      arid = ri.zone or "",
+      name = ri.name or "",
+      exits = ri.exits or {},
+      maze = (ri.details and string.match(ri.details, "maze")) and true or false,
+   }
+end
+
+function State.update_char(status)
+   if status then
+      State._char_state = status.state or "0"
+      State._level = tonumber(status.level) or 0
+      State._tnl = tonumber(status.tnl) or 0
+   end
+end
+
+function State.broadcast(msg_num, data)
+   BroadcastPlugin(msg_num, data or "")
+end
+
+function State.broadcast_activity()
+   State.broadcast(CONST.BCAST_ACTIVITY, State._activity)
+end
+
+function State.broadcast_full()
+   local snapshot = {
+      room = State._room,
+      target = State._target,
+      activity = State._activity,
+      noexp = State._noexp,
+      level = State._level,
+   }
+   State.broadcast(CONST.BCAST_FULL_STATE, json.encode(snapshot))
+end
+
+------------------------------------------------------------------------
+-- MobKeyword: Guess mob keywords for targeting
+------------------------------------------------------------------------
+MobKeyword = {}
+
+--- Guess a keyword for targeting a mob
+-- @param mob_name Full mob name (e.g., "a sinister vandal")
+-- @param area Area ID (e.g., "diatz")
+-- @return Guessed keyword string
+function MobKeyword.guess(mob_name, area)
+   if not mob_name or mob_name == "" then
+      return ""
+   end
+
+   area = area or (State._room and State._room.arid) or ""
+
+   -- Stage 1: Check DB overrides
+   local override = DB.get_mob_override(mob_name, area)
+   if override and override.keyword and override.keyword ~= "" then
+      Util.debug("Found override keyword for '", mob_name, "': ", override.keyword)
+      return override.keyword
+   end
+
+   -- Stage 1b: Check hardcoded exceptions
+   local area_exceptions = CONST.MOB_KEYWORD_EXCEPTIONS[area]
+   if area_exceptions and area_exceptions[mob_name] then
+      return area_exceptions[mob_name]
+   end
+
+   -- Stage 2: Clean the mob name
+   local words = {}
+   for w in string.gmatch(string.lower(mob_name), "[^ ]+") do
+      w = w:gsub("'s$", "")       -- possessives (before other punctuation)
+      w = w:gsub("[,%.!?\"()]+", "")  -- common punctuation
+      if w ~= "" then
+         words[#words + 1] = w
+      end
+   end
+
+   -- Stage 3: Remove omit words (articles, prepositions)
+   local cleaned = {}
+   for _, w in ipairs(words) do
+      if not CONST.OMIT_WORDS[w] then
+         cleaned[#cleaned + 1] = w
+      end
+   end
+
+   if #cleaned == 0 then
+      return mob_name  -- fallback to original if everything was filtered
+   end
+
+   local joined = table.concat(cleaned, " ")
+
+   -- Stage 4: Apply area-specific filters
+   local filtered = joined
+   local filters = CONST.AREA_KEYWORD_FILTERS[area]
+   if filters then
+      for _, v in ipairs(filters) do
+         local result = string.gsub(joined, v.f, v.g)
+         if result ~= joined then
+            filtered = result
+            break
+         end
+      end
+   end
+   filtered = filtered:gsub("%-", " ")
+
+   -- Stage 5: Build keyword from first and last words
+   local parts = {}
+   for w in string.gmatch(filtered, "[^ ]+") do
+      parts[#parts + 1] = w
+   end
+
+   if #parts == 0 then
+      return mob_name
+   end
+
+   local guess
+   if #parts > 1 then
+      -- Multi-word: first 4-5 chars of first + first 4-5 chars of last
+      local x = math.min(5, #parts[1])
+      local y = math.min(5, #parts[#parts])
+      guess = parts[1]:sub(1, x) .. " " .. parts[#parts]:sub(1, y)
+   else
+      -- Single word: use most of it
+      local len = #parts[1]
+      local x = math.max(3, math.floor(len * 0.7))
+      guess = parts[1]:sub(1, x)
+   end
+
+   return guess
+end
+
+--- Get mob override info (keyword, nohunt, etc.)
+function MobKeyword.get_override(mob_name, area)
+   return DB.get_mob_override(mob_name, area)
+end
+
+------------------------------------------------------------------------
+-- CP: Campaign management (stub - Phase 2)
+------------------------------------------------------------------------
+CP = {
+   _info_list = {},
+   _check_list = {},
+   _on_cp = false,
+   _level = 0,
+   _can_get_new = false,
+}
+
+------------------------------------------------------------------------
+-- GQ: Global quest management (stub - Phase 5)
+------------------------------------------------------------------------
+GQ = {
+   _info_list = {},
+   _check_list = {},
+   _on_gq = false,
+   _joined_id = -1,
+   _started_id = -1,
+}
+
+------------------------------------------------------------------------
+-- Quest: Quest management (stub - Phase 4)
+------------------------------------------------------------------------
+Quest = {
+   _target = nil,
+   _next_quest_time = nil,
+}
+
+------------------------------------------------------------------------
+-- TargetList: Build unified target lists (stub - Phase 2)
+------------------------------------------------------------------------
+TargetList = {
+   _main_list = {},
+}
+
+------------------------------------------------------------------------
+-- Nav: Navigation (stub - Phase 2)
+------------------------------------------------------------------------
+Nav = {
+   _goto_list = {},
+   _goto_index = 0,
+}
+
+------------------------------------------------------------------------
+-- HuntTrick: Progressive hunt cycling (stub - Phase 3)
+------------------------------------------------------------------------
+HuntTrick = {
+   _index = 1,
+   _keyword = "",
+   _active = false,
+}
+
+------------------------------------------------------------------------
+-- AutoHunt: Auto-hunt with direction following (stub - Phase 3)
+------------------------------------------------------------------------
+AutoHunt = {
+   _mob = "",
+   _direction = "",
+   _active = false,
+}
+
+------------------------------------------------------------------------
+-- QuickWhere: Quick where iteration (stub - Phase 3)
+------------------------------------------------------------------------
+QuickWhere = {
+   _index = 1,
+   _exact = false,
+   _active = false,
+}
+
+------------------------------------------------------------------------
+-- SmartScan: Scan + consider (stub - Phase 4)
+------------------------------------------------------------------------
+SmartScan = {
+   _scanned_mobs = {},
+   _considered_mobs = {},
+}
+
+------------------------------------------------------------------------
+-- Noexp: Auto-noexp management
+------------------------------------------------------------------------
+Noexp = {
+   _tnl_cutoff = 0,
+   _noexp_on = false,
+   _auto_enabled = true,
+}
+
+function Noexp.init()
+   Noexp._tnl_cutoff = tonumber(Config.get("noexp_tnl_cutoff")) or 0
+   Noexp._auto_enabled = Config.get("noexp_auto") == "on"
+end
+
+function Noexp.check_tnl()
+   if not Noexp._auto_enabled then return end
+   if State._level >= 200 then
+      if Noexp._noexp_on then
+         Noexp.set(false)
+         Util.info("Turning noexp ", "OFF", " (level 200+)")
+      end
+      return
+   end
+
+   local tnl = State._tnl
+   if Noexp._tnl_cutoff <= 0 then return end
+
+   if tnl < Noexp._tnl_cutoff and not Noexp._noexp_on then
+      Noexp.set(true)
+      Util.info("Turning noexp ", "ON", " (TNL ", tostring(tnl), " < cutoff ", tostring(Noexp._tnl_cutoff), ")")
+   elseif tnl > Noexp._tnl_cutoff and Noexp._noexp_on then
+      Noexp.set(false)
+      Util.info("Turning noexp ", "OFF", " (TNL ", tostring(tnl), " > cutoff ", tostring(Noexp._tnl_cutoff), ")")
+   end
+end
+
+function Noexp.set(on)
+   -- Only send command if state actually needs to change
+   if Noexp._noexp_on == on then return end
+   Noexp._noexp_on = on
+   State._noexp = on
+   SendNoEcho("noexp")  -- toggle via game command (Aardwolf checks current state)
+   State.broadcast(CONST.BCAST_NOEXP, json.encode({noexp = on, tnl_cutoff = Noexp._tnl_cutoff}))
+end
+
+------------------------------------------------------------------------
+-- DamageTracker: Track damage/kills (stub - Phase 2)
+------------------------------------------------------------------------
+DamageTracker = {
+   _last_damaged = nil,
+   _last_killed = nil,
+}
+
+------------------------------------------------------------------------
+-- Plugin Lifecycle
+------------------------------------------------------------------------
+
+function OnPluginInstall()
+   ColourNote("#808080", "", "\n+=================================================================+")
+   ColourNote("#FF5000", "", "    Search & Destroy v" .. GetPluginInfo(GetPluginID(), 19) .. " installed")
+   ColourNote("#FF5000", "", "    Type 'xhelp' for commands")
+   ColourNote("#808080", "", "+=================================================================+\n")
+end
+
+function OnPluginBroadcast(msg, id, name, text)
+   if id == CONST.GMCP_HANDLER then
+      if text == "char.status" then
+         local status = Util.gmcp("char.status")
+         if status then
+            State.update_char(status)
+            Noexp.check_tnl()
+         end
+      elseif text == "room.info" then
+         local ri = Util.gmcp("room.info")
+         if ri then
+            State.update_room(ri)
+         end
+      elseif text == "comm.quest" then
+         local q = Util.gmcp("comm.quest")
+         if q then
+            Quest.on_gmcp(q)
+         end
+      elseif text == "config" then
+         local noexp_val = Util.gmcp("config.noexp")
+         if noexp_val then
+            Noexp._noexp_on = (noexp_val == "YES")
+            State._noexp = Noexp._noexp_on
+         end
+      end
+   end
+end
+
+function Quest.on_gmcp(q)
+   -- Stub: will be implemented in Phase 4
+   Util.debug("Quest GMCP: ", q.action or "unknown")
+end
+
+function OnPluginSaveState()
+   Config.save()
+end
+
+function OnPluginClose()
+   OnPluginSaveState()
+   DB.close()
+end
+
+function OnPluginEnable()
+   Util.info("Search and Destroy ", "enabled")
+end
+
+function OnPluginDisable()
+   Util.info("Search and Destroy ", "disabled")
+end
+
+--- Delayed init timer callback
+function on_init_timer()
+   if not IsConnected() then
+      -- Re-enable timer to try again
+      EnableTimer("tim_init", true)
+      return
+   end
+
+   Config.load()
+   DB.init()
+   Noexp.init()
+
+   -- Request tags for scan
+   SendNoEcho("tags scan on")
+   SendNoEcho("tags roomchars on")
+
+   Util.debug("Plugin initialized")
+end
+
+--- Parse safety timeout
+function on_parse_safety_timeout()
+   -- Disable all parsing trigger groups
+   EnableTriggerGroup("grp_cp_info", false)
+   EnableTriggerGroup("grp_cp_check", false)
+   EnableTriggerGroup("grp_gq_info", false)
+   EnableTriggerGroup("grp_gq_check", false)
+   Util.debug("Parse safety timeout: disabled parsing groups")
+end
+
+--- State save timer
+function on_state_save_timer()
+   if Config._dirty then
+      Config.save()
+      SaveState()
+   end
+end
+
+------------------------------------------------------------------------
+-- Command Handlers (stubs - detailed implementation in later phases)
+------------------------------------------------------------------------
+
+function cmd_xhelp(name, line, wildcards)
+   ColourNote("#FF5000", "", "\n=== Search & Destroy v2 Commands ===")
+   ColourNote("#00B4E0", "", "  xcp [N]        ", "#E0E0E0", "", "- Select target N from list (or show list)")
+   ColourNote("#00B4E0", "", "  go [area/N]    ", "#E0E0E0", "", "- Navigate to target area or room N")
+   ColourNote("#00B4E0", "", "  nx             ", "#E0E0E0", "", "- Execute next action on current target")
+   ColourNote("#00B4E0", "", "  ht [N] [mob]   ", "#E0E0E0", "", "- Hunt trick: cycle hunt N.mob")
+   ColourNote("#00B4E0", "", "  qw [mob]       ", "#E0E0E0", "", "- Quick where: locate mob")
+   ColourNote("#00B4E0", "", "  qs             ", "#E0E0E0", "", "- Quick scan: scan + consider")
+   ColourNote("#00B4E0", "", "  ah [mob]       ", "#E0E0E0", "", "- Auto-hunt: follow hunt directions")
+   ColourNote("#00B4E0", "", "  kk             ", "#E0E0E0", "", "- Quick kill current target")
+   ColourNote("#00B4E0", "", "  xrt [keyword]  ", "#E0E0E0", "", "- Re-target with new keyword")
+   ColourNote("#00B4E0", "", "  xset [setting] ", "#E0E0E0", "", "- View/change settings")
+   ColourNote("#00B4E0", "", "  xtest [cmd]    ", "#E0E0E0", "", "- Testing/debug commands")
+   Note("")
+end
+
+function cmd_xset(name, line, wildcards)
+   local args = Util.trim(wildcards[1] or "")
+   if args == "" then
+      -- Show all settings
+      ColourNote("#FF5000", "", "\n=== Search & Destroy Settings ===")
+      for key, default in pairs(Config._defaults) do
+         local val = Config.get(key)
+         local color = (val == default) and "#E0E0E0" or "#00FF00"
+         ColourNote("#00B4E0", "", string.format("  %-20s", key), color, "", val)
+      end
+      Note("")
+      return
+   end
+   -- Parse "key value" or "key"
+   local key, value = args:match("^(%S+)%s+(.+)$")
+   if not key then
+      key = args
+      -- Show single setting
+      local val = Config.get(key)
+      if val then
+         Util.info(key, " = ", val)
+      else
+         Util.error("Unknown setting: ", key)
+      end
+      return
+   end
+   if Config.set(key, value) then
+      Util.info("Set ", key, " = ", value)
+      -- Special handling for noexp settings
+      if key == "noexp_tnl_cutoff" then
+         Noexp._tnl_cutoff = tonumber(value) or 0
+         Noexp.check_tnl()
+      elseif key == "noexp_auto" then
+         Noexp._auto_enabled = (value == "on")
+         Noexp.check_tnl()
+      end
+   end
+end
+
+function cmd_xtest(name, line, wildcards)
+   local args = Util.trim(wildcards[1] or "")
+   if args == "" then
+      ColourNote("#FF5000", "", "\n=== xtest commands ===")
+      ColourNote("#00B4E0", "", "  xtest state    ", "#E0E0E0", "", "- Print current state")
+      ColourNote("#00B4E0", "", "  xtest db       ", "#E0E0E0", "", "- Verify database")
+      ColourNote("#00B4E0", "", "  xtest keyword <mob> [area]", "#E0E0E0", "", "- Test keyword guessing")
+      Note("")
+      return
+   end
+
+   local cmd = args:match("^(%S+)")
+   local rest = args:match("^%S+%s+(.+)$") or ""
+
+   if cmd == "state" then
+      ColourNote("#FF5000", "", "\n=== S&D State ===")
+      local room = State.get_room()
+      Util.info("Room: ", tostring(room.rmid), " (", room.arid, ") ", room.name)
+      Util.info("Activity: ", State.get_activity())
+      Util.info("Level: ", tostring(State._level), " TNL: ", tostring(State._tnl))
+      Util.info("Noexp: ", tostring(State._noexp))
+      local target = State.get_target()
+      if target then
+         Util.info("Target: ", target.name or "?", " [", target.keyword or "?", "] in ", target.area or "?")
+      else
+         Util.info("Target: ", "none")
+      end
+      Note("")
+
+   elseif cmd == "db" then
+      local db = DB.open()
+      if db then
+         Util.info("Database: ", DB.get_path())
+         Util.info("Schema version: ", tostring(DB.get_version()))
+         local counts = {
+            mobs = DB.query("SELECT COUNT(*) as c FROM mobs")[1].c,
+            areas = DB.query("SELECT COUNT(*) as c FROM areas")[1].c,
+            overrides = DB.query("SELECT COUNT(*) as c FROM mob_overrides")[1].c,
+            start_rooms = DB.query("SELECT COUNT(*) as c FROM start_rooms")[1].c,
+         }
+         Util.info("Tables: mobs=", tostring(counts.mobs),
+                    " areas=", tostring(counts.areas),
+                    " overrides=", tostring(counts.overrides),
+                    " start_rooms=", tostring(counts.start_rooms))
+      else
+         Util.error("Database not available")
+      end
+
+   elseif cmd == "keyword" then
+      local mob, area = rest:match("^(.+)%s+(%S+)$")
+      if not mob then
+         mob = rest
+         area = State._room and State._room.arid or ""
+      end
+      if mob == "" then
+         Util.error("Usage: xtest keyword <mob name> [area]")
+         return
+      end
+      local guess = MobKeyword.guess(mob, area)
+      Util.info("Mob: '", mob, "' Area: '", area, "' -> Keyword: '", guess, "'")
+
+   else
+      Util.error("Unknown xtest command: ", cmd, ". Type 'xtest' for help.")
+   end
+end
+
+function cmd_xcp(name, line, wildcards)
+   Util.info("xcp: Not yet implemented (Phase 2)")
+end
+
+function cmd_go(name, line, wildcards)
+   Util.info("go: Not yet implemented (Phase 2)")
+end
+
+function cmd_nx(name, line, wildcards)
+   Util.info("nx: Not yet implemented (Phase 2)")
+end
+
+function cmd_ht(name, line, wildcards)
+   Util.info("ht: Not yet implemented (Phase 3)")
+end
+
+function cmd_qw(name, line, wildcards)
+   Util.info("qw: Not yet implemented (Phase 3)")
+end
+
+function cmd_qs(name, line, wildcards)
+   Util.info("qs: Not yet implemented (Phase 4)")
+end
+
+function cmd_ah(name, line, wildcards)
+   Util.info("ah: Not yet implemented (Phase 3)")
+end
+
+function cmd_xrt(name, line, wildcards)
+   Util.info("xrt: Not yet implemented (Phase 2)")
+end
+
+function cmd_kk(name, line, wildcards)
+   local kk_cmd = Config.get("quick_kill_command") or "k"
+   local target = State.get_target()
+   if target and target.keyword then
+      SendNoEcho(kk_cmd .. " " .. target.keyword)
+   else
+      Util.error("No target set. Use xcp to select a target first.")
+   end
+end
+
+------------------------------------------------------------------------
+-- Trigger Callbacks (stubs - detailed implementation in later phases)
+------------------------------------------------------------------------
+
+-- CP INFO triggers
+function on_cp_info_level(name, line, wildcards) end
+function on_cp_info_start(name, line, wildcards) end
+function on_cp_info_line(name, line, wildcards) end
+function on_cp_info_end(name, line, wildcards) end
+
+-- CP CHECK triggers
+function on_cp_check_line(name, line, wildcards) end
+function on_cp_check_end(name, line, wildcards) end
+
+-- CP EVENT triggers
+function on_cp_mob_killed(name, line, wildcards) end
+function on_cp_complete(name, line, wildcards) end
+function on_cp_cleared(name, line, wildcards) end
+function on_cp_new_available(name, line, wildcards) end
+function on_cp_not_on(name, line, wildcards) end
+function on_cp_must_level(name, line, wildcards) end
+
+-- GQ INFO triggers
+function on_gq_info_quest_name(name, line, wildcards) end
+function on_gq_info_extended(name, line, wildcards) end
+function on_gq_info_level(name, line, wildcards) end
+function on_gq_info_line(name, line, wildcards) end
+function on_gq_info_end(name, line, wildcards) end
+
+-- GQ CHECK triggers
+function on_gq_check_line(name, line, wildcards) end
+function on_gq_check_end(name, line, wildcards) end
+
+-- GQ EVENT triggers
+function on_gq_mob_killed(name, line, wildcards) end
+function on_gq_joined(name, line, wildcards) end
+function on_gq_started(name, line, wildcards) end
+function on_gq_finished(name, line, wildcards) end
+function on_gq_ended(name, line, wildcards) end
+function on_gq_not_started(name, line, wildcards) end
+
+-- HUNT TRICK triggers
+function on_ht_direction(name, line, wildcards) end
+function on_ht_here(name, line, wildcards) end
+function on_ht_unable(name, line, wildcards) end
+function on_ht_not_found(name, line, wildcards) end
+function on_ht_abort(name, line, wildcards) end
+
+-- AUTO HUNT triggers
+function on_ah_direction(name, line, wildcards) end
+function on_ah_here(name, line, wildcards) end
+function on_ah_not_found(name, line, wildcards) end
+
+-- QUICK WHERE triggers
+function on_qw_match(name, line, wildcards) end
+function on_qw_no_match(name, line, wildcards) end
+
+-- NOEXP triggers
+function on_noexp_xp(name, line, wildcards) end
+function on_noexp_level(name, line, wildcards) end
+
+]]>
+</script>
+</muclient>
