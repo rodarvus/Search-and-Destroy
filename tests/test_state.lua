@@ -7,6 +7,8 @@ if not CONST then
    load_plugin()
 end
 
+local TestData = require("test_data")
+
 function setUp()
    mock.reset()
    -- Reset State to initial values
@@ -170,4 +172,231 @@ run_test("State.activity_transitions", function()
       end
    end
    assert_equal(3, bcast_count, "3 activity broadcasts sent")
+end)
+
+------------------------------------------------------------------------
+-- CP module state transitions
+------------------------------------------------------------------------
+
+run_test("CP.start", function()
+   -- CP.start() should set state, turn noexp off, and begin cp info parsing
+   CP._on_cp = false
+   CP._level = 0
+   CP._can_get_new = false
+   State._activity = "none"
+   State._level = 50
+   Noexp._noexp_on = true
+   Noexp._auto_enabled = true
+   Noexp._tnl_cutoff = 500
+   State._noexp = true
+
+   CP.start()
+
+   assert_true(CP._on_cp, "CP on after start")
+   assert_equal("cp", State.get_activity(), "activity set to cp")
+   assert_false(Noexp._noexp_on, "noexp turned off on CP start")
+   assert_false(State._noexp, "State._noexp synced off")
+   -- Should have sent "cp info" via SendNoEcho
+   local sent_cp_info = false
+   for _, call in ipairs(mock.calls["SendNoEcho"] or {}) do
+      if call[1] == "cp info" then sent_cp_info = true end
+   end
+   assert_true(sent_cp_info, "sent cp info command")
+end)
+
+run_test("CP.start_noexp_already_off", function()
+   -- If noexp is already off, CP.start should not send noexp command
+   CP._on_cp = false
+   State._activity = "none"
+   Noexp._noexp_on = false
+   State._noexp = false
+
+   CP.start()
+
+   -- Should not have sent "noexp" game command (only "cp info")
+   local sent_noexp = false
+   for _, call in ipairs(mock.calls["SendNoEcho"] or {}) do
+      if call[1] == "noexp" then sent_noexp = true end
+   end
+   assert_false(sent_noexp, "no noexp command when already off")
+end)
+
+run_test("CP.clear", function()
+   -- CP.clear() should reset all CP state
+   CP._on_cp = true
+   CP._level = 50
+   CP._info_list = {{mob = "test"}}
+   CP._check_list = {{mob = "test"}}
+   State._activity = "cp"
+   State._target = {keyword = "test", name = "test mob"}
+   TargetList._main_list = {{mob = "test"}}
+
+   CP.clear()
+
+   assert_false(CP._on_cp, "CP off after clear")
+   assert_equal(0, CP._level, "level reset")
+   assert_equal(0, #CP._info_list, "info list cleared")
+   assert_equal(0, #CP._check_list, "check list cleared")
+   assert_equal("none", State.get_activity(), "activity back to none")
+   assert_nil(State.get_target(), "target cleared")
+   assert_equal(0, TargetList.count(), "target list cleared")
+end)
+
+run_test("CP.clear_preserves_gq", function()
+   -- TODO Phase 5: When GQ coexistence is implemented, CP.clear()
+   -- should preserve GQ state if State._activity == "gq".
+   -- For now, it clears everything.
+   assert_true(true, "placeholder for Phase 5 GQ coexistence test")
+end)
+
+run_test("Noexp.check_tnl_skips_during_cp", function()
+   -- check_tnl should NOT turn noexp ON while on a CP
+   Noexp._auto_enabled = true
+   Noexp._noexp_on = false
+   Noexp._tnl_cutoff = 500
+   State._tnl = 200  -- below cutoff
+   State._level = 50
+   CP._on_cp = true  -- on a CP
+
+   Noexp.check_tnl()
+
+   assert_false(Noexp._noexp_on, "noexp stays off during CP even when TNL < cutoff")
+   assert_nil(mock.calls["SendNoEcho"], "no noexp command sent during CP")
+end)
+
+run_test("CP.info_parse_flow", function()
+   -- Simulate cp info output by calling trigger callbacks directly
+   CP._on_cp = false
+   CP._info_list = {}
+   CP._level = 0
+
+   on_cp_info_level(nil, nil, {[1] = "45"})
+   assert_equal(45, CP._level, "level captured from cp info")
+
+   on_cp_info_start(nil, nil, {})
+   assert_equal(0, #CP._info_list, "info list cleared on start")
+
+   -- Feed the cp info lines from test data
+   for _, target in ipairs(TestData.cp_info_area_parsed.targets) do
+      on_cp_info_line(nil, nil, {[1] = target.mob, [2] = target.location})
+   end
+   assert_equal(5, #CP._info_list, "5 targets parsed from cp info")
+   assert_equal("a sinister vandal", CP._info_list[1].mob, "first mob name correct")
+   assert_equal("The Three Pillars of Diatz", CP._info_list[1].location, "first location correct")
+end)
+
+run_test("CP.check_parse_flow", function()
+   -- Simulate cp check output
+   CP._check_list = {}
+   CP._type = "area"
+   CP._level = 45
+   State._activity = "none"
+   mock.reset_db()
+   DB.init()
+
+   -- Feed check lines (alive and dead)
+   on_cp_check_line(nil, nil, {[1] = "a sinister vandal", [2] = "The Three Pillars of Diatz", [3] = false})
+   on_cp_check_line(nil, nil, {[1] = "a mutated goat", [2] = "The Killing Fields", [3] = "Dead"})
+   assert_equal(2, #CP._check_list, "2 check lines parsed")
+   assert_false(CP._check_list[1].dead, "first target alive")
+   assert_true(CP._check_list[2].dead, "second target dead")
+
+   -- Simulate check end — this builds the target list
+   on_cp_check_end(nil, nil, {})
+   assert_true(CP._on_cp, "CP active after check end")
+   assert_equal("cp", State.get_activity(), "activity is cp")
+   assert_equal(2, TargetList.count(), "target list built with 2 targets")
+end)
+
+run_test("CP.mob_killed_refreshes", function()
+   -- Simulate: CP active, target set, mob killed
+   CP._on_cp = true
+   State._activity = "cp"
+   local target = {mob = "a test mob", keyword = "test", area = "testarea", index = 1}
+   State.set_target(target)
+   mock.reset()  -- clear call log
+
+   on_cp_mob_killed(nil, nil, {})
+
+   -- Should have saved the target for re-matching
+   assert_not_nil(CP._last_target, "last target saved for re-matching")
+   assert_equal("a test mob", CP._last_target.mob, "last target mob preserved")
+
+   -- Should have scheduled a cp check via DoAfterSpecial
+   assert_not_nil(mock.calls["DoAfterSpecial"], "DoAfterSpecial called")
+end)
+
+run_test("CP.events_complete_clears", function()
+   CP._on_cp = true
+   State._activity = "cp"
+   mock.reset()
+
+   on_cp_complete(nil, nil, {})
+
+   assert_false(CP._on_cp, "CP off after complete")
+   assert_equal("none", State.get_activity(), "activity none after complete")
+end)
+
+run_test("CP.events_cleared", function()
+   CP._on_cp = true
+   State._activity = "cp"
+
+   on_cp_cleared(nil, nil, {})
+
+   assert_false(CP._on_cp, "CP off after cleared")
+end)
+
+run_test("CP.events_not_on", function()
+   CP._on_cp = true
+   State._activity = "cp"
+
+   on_cp_not_on(nil, nil, {})
+
+   assert_false(CP._on_cp, "CP off after not_on")
+end)
+
+run_test("CP.events_not_on_noop", function()
+   -- If not on CP, not_on should be a no-op
+   CP._on_cp = false
+   State._activity = "none"
+   mock.reset()
+
+   on_cp_not_on(nil, nil, {})
+
+   -- Should not have broadcast anything
+   assert_nil(mock.calls["BroadcastPlugin"], "no broadcast when already not on CP")
+end)
+
+run_test("CP.events_new_available", function()
+   CP._can_get_new = false
+
+   on_cp_new_available(nil, nil, {})
+
+   assert_true(CP._can_get_new, "can get new after new_available")
+end)
+
+run_test("CP.events_must_level_noexp_off", function()
+   CP._can_get_new = true
+   Noexp._noexp_on = true
+   State._noexp = true
+   mock.reset()
+
+   on_cp_must_level(nil, nil, {})
+
+   assert_false(CP._can_get_new, "can't get new after must_level")
+   assert_false(Noexp._noexp_on, "noexp off after must_level")
+end)
+
+run_test("Noexp.check_tnl_activates_without_cp", function()
+   -- check_tnl SHOULD turn noexp ON when not on CP and TNL < cutoff
+   Noexp._auto_enabled = true
+   Noexp._noexp_on = false
+   Noexp._tnl_cutoff = 500
+   State._tnl = 200  -- below cutoff
+   State._level = 50
+   CP._on_cp = false  -- NOT on a CP
+
+   Noexp.check_tnl()
+
+   assert_true(Noexp._noexp_on, "noexp turns on when TNL < cutoff and not on CP")
 end)

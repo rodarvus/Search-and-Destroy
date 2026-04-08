@@ -116,6 +116,14 @@ end)
 -- CP EVENT triggers
 ------------------------------------------------------------------------
 
+run_test("trg_cp_request", function()
+   -- Apostrophes decoded from &#39; at runtime
+   local pat = [[^\w.+ tells you 'Good luck in your campaign!'$]]
+   assert_not_nil(pcre_find(pat, TestData.cp_events.request), "cp request matches")
+   assert_not_nil(pcre_find(pat, "SomeNPC tells you 'Good luck in your campaign!'"), "different NPC name matches")
+   assert_nil(pcre_find(pat, "Good luck in your campaign!"), "bare message doesn't match")
+end)
+
 run_test("trg_cp_mob_killed", function()
    local pat = [[^Congratulations, that was one of your CAMPAIGN mobs!$]]
    assert_not_nil(pcre_find(pat, TestData.cp_events.mob_killed), "cp mob killed matches")

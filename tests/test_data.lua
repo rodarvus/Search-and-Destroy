@@ -207,6 +207,7 @@ TestData.quest_gmcp = {
 -- CP event messages
 ------------------------------------------------------------------------
 TestData.cp_events = {
+   request = "Questor tells you 'Good luck in your campaign!'",
    mob_killed = "Congratulations, that was one of your CAMPAIGN mobs!",
    complete = "CONGRATULATIONS! You have completed your campaign.",
    cleared = "Campaign cleared.",

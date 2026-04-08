@@ -244,6 +244,15 @@ Based on Crowley's and WinkleGold's Search and Destroy plugins.
    ></trigger>
 
    <!-- ==================== CP EVENTS (always on) ==================== -->
+   <trigger name="trg_cp_request"
+      match="^\w.+ tells you &#39;Good luck in your campaign!&#39;$"
+      enabled="y"
+      regexp="y"
+      script="on_cp_request"
+      group="grp_cp_events"
+      sequence="10"
+   ></trigger>
+
    <trigger name="trg_cp_mob_killed"
       match="^Congratulations, that was one of your CAMPAIGN mobs!$"
       enabled="y"
@@ -2072,7 +2081,65 @@ CP = {
    _on_cp = false,
    _level = 0,
    _can_get_new = false,
+   _last_check_time = 0,    -- cooldown: os.clock() of last cp check
+   _last_target = nil,       -- backup for target matching after refresh
 }
+
+--- Start a new campaign (triggered by "Good luck in your campaign!")
+function CP.start()
+   CP._on_cp = true
+   CP._can_get_new = false
+   CP._level = State._level
+   State.set_activity("cp")
+
+   -- Turn noexp off — player needs XP for CP mobs
+   if Noexp._noexp_on then
+      Noexp.set(false)
+      Util.info("Turning noexp ", "OFF", " (campaign started)")
+   end
+
+   CP.do_info()
+end
+
+--- Send "cp info" and enable parsing triggers
+function CP.do_info()
+   CP._info_list = {}
+   EnableTriggerGroup("grp_cp_info", true)
+   EnableTimer("tim_parse_safety", true)
+   ResetTimer("tim_parse_safety")
+   SendNoEcho("cp info")
+end
+
+--- Send "cp check" and enable parsing triggers (with cooldown guard)
+function CP.do_check()
+   local now = os.clock()
+   if (now - CP._last_check_time) < 1.0 then
+      Util.debug("CP.do_check skipped (cooldown)")
+      return
+   end
+   CP._last_check_time = now
+   CP._check_list = {}
+   EnableTriggerGroup("grp_cp_check", true)
+   EnableTimer("tim_parse_safety", true)
+   ResetTimer("tim_parse_safety")
+   SendNoEcho("cp check")
+end
+
+--- Clear all CP state (campaign completed, cleared, or not on CP)
+function CP.clear()
+   CP._on_cp = false
+   CP._level = 0
+   CP._can_get_new = false
+   CP._info_list = {}
+   CP._check_list = {}
+   CP._last_target = nil
+
+   -- TODO Phase 5: Check if GQ is active before clearing target list/activity.
+   -- WinkleGold preserves GQ state when CP clears. For now, clear everything.
+   TargetList.clear()
+   State.clear_target()
+   State.set_activity("none")
+end
 
 ------------------------------------------------------------------------
 -- GQ: Global quest management (stub - Phase 5)
@@ -2330,7 +2397,7 @@ function Noexp.check_tnl()
    local tnl = State._tnl
    if Noexp._tnl_cutoff <= 0 then return end
 
-   if tnl < Noexp._tnl_cutoff and not Noexp._noexp_on then
+   if tnl < Noexp._tnl_cutoff and not Noexp._noexp_on and not CP._on_cp then
       Noexp.set(true)
       Util.info("Turning noexp ", "ON", " (TNL ", tostring(tnl), " < cutoff ", tostring(Noexp._tnl_cutoff), ")")
    elseif tnl > Noexp._tnl_cutoff and Noexp._noexp_on then
@@ -2626,23 +2693,117 @@ end
 ------------------------------------------------------------------------
 
 -- CP INFO triggers
-function on_cp_info_level(name, line, wildcards) end
-function on_cp_info_start(name, line, wildcards) end
-function on_cp_info_line(name, line, wildcards) end
-function on_cp_info_end(name, line, wildcards) end
+function on_cp_info_level(name, line, wildcards)
+   CP._level = tonumber(wildcards[1]) or 0
+   Util.debug("CP level: ", tostring(CP._level))
+end
+
+function on_cp_info_start(name, line, wildcards)
+   CP._info_list = {}
+end
+
+function on_cp_info_line(name, line, wildcards)
+   CP._info_list[#CP._info_list + 1] = {
+      mob = wildcards[1],
+      location = wildcards[2],
+   }
+end
+
+function on_cp_info_end(name, line, wildcards)
+   EnableTriggerGroup("grp_cp_info", false)
+   EnableTimer("tim_parse_safety", false)
+
+   -- Detect area vs room type from info list
+   CP._type = TargetList.detect_type(CP._info_list)
+   Util.debug("CP type: ", CP._type, " (", tostring(#CP._info_list), " targets)")
+
+   -- Chain to cp check after short delay (allows MUD output to settle)
+   DoAfterSpecial(0.1, "CP.do_check()", sendto.script)
+end
 
 -- CP CHECK triggers
-function on_cp_check_line(name, line, wildcards) end
-function on_cp_check_end(name, line, wildcards) end
+function on_cp_check_line(name, line, wildcards)
+   local dead = (wildcards[3] == "Dead") or false
+   CP._check_list[#CP._check_list + 1] = {
+      mob = wildcards[1],
+      location = wildcards[2],
+      dead = dead,
+   }
+end
+
+function on_cp_check_end(name, line, wildcards)
+   EnableTriggerGroup("grp_cp_check", false)
+   EnableTimer("tim_parse_safety", false)
+
+   CP._on_cp = true
+   State.set_activity("cp")
+
+   -- Build target list from check data
+   TargetList.build(CP._check_list, CP._type or "area", CP._level)
+
+   -- Try to re-find prior target in new list
+   if CP._last_target then
+      local found = TargetList.find_by_mob(CP._last_target.mob)
+      if found then
+         State.set_target(found)
+      else
+         State.clear_target()
+      end
+      CP._last_target = nil
+   end
+end
 
 -- CP EVENT triggers
-function on_cp_mob_killed(name, line, wildcards) end
-function on_cp_complete(name, line, wildcards) end
-function on_cp_cleared(name, line, wildcards) end
-function on_cp_new_available(name, line, wildcards) end
-function on_cp_not_on(name, line, wildcards) end
-function on_cp_must_level(name, line, wildcards) end
-function on_cp_timer(name, line, wildcards) end
+function on_cp_request(name, line, wildcards)
+   CP.start()
+end
+
+function on_cp_mob_killed(name, line, wildcards)
+   if State.get_activity() ~= "cp" then return end
+
+   -- Save current target for re-matching after refresh
+   CP._last_target = State.get_target()
+
+   Util.info("Campaign mob killed!")
+
+   -- Refresh target list after short delay
+   DoAfterSpecial(0.1, "CP.do_check()", sendto.script)
+end
+
+function on_cp_complete(name, line, wildcards)
+   Util.important("Campaign complete!")
+   CP.clear()
+end
+
+function on_cp_cleared(name, line, wildcards)
+   Util.info("Campaign cleared.")
+   CP.clear()
+end
+
+function on_cp_new_available(name, line, wildcards)
+   CP._can_get_new = true
+   Util.debug("New campaign available")
+end
+
+function on_cp_not_on(name, line, wildcards)
+   if CP._on_cp then
+      CP.clear()
+   end
+end
+
+function on_cp_must_level(name, line, wildcards)
+   CP._can_get_new = false
+   -- Turn noexp off — player needs to level (TODO: test live at appropriate level)
+   if Noexp._noexp_on then
+      Noexp.set(false)
+      Util.info("Turning noexp ", "OFF", " (must level for new campaign)")
+   end
+end
+
+function on_cp_timer(name, line, wildcards)
+   -- Superhero CP cooldown (TODO: verify live at superhero level)
+   CP._can_get_new = false
+end
 
 -- GQ INFO triggers
 function on_gq_info_quest_name(name, line, wildcards) end
