@@ -538,3 +538,61 @@ PRAGMA user_version = 1;
 | Show keyword | `xset kw` | N/A |
 | Sound toggle | `xset sound` | N/A |
 | Silent mode | `xset silent` | `xset silentmode` |
+
+---
+
+## Addendum: Phase 2 Design Analysis (2026-04-08)
+
+### Trigger Pattern Accuracy
+
+Cross-referencing Crowley, WinkleGold, and the leveldb plugin revealed several incorrect patterns in our Phase 1 triggers:
+
+| Pattern | Issue | Resolution |
+|---------|-------|------------|
+| Quick where match | Used "X is in Y" prose; actual output is 30-char padded tabular | Adopted Crowley/WinkleGold `.{30}` format (verified live) |
+| Quick where no-match | Included hallucinated "No one by that name" variant | Removed; only "There is no X around here." is real (Crowley) |
+| Level-up | "Congratulations, hero" matches no real message | Corrected to "You raise a level!" (Crowley/WinkleGold) |
+| GQ joined | "You have joined" missing "now" | "You have now joined" (leveldb, Crowley) |
+| GQ started | Simple "has now started!" | Full format with level range (Crowley line 9323) |
+| GQ ended | "has ended/been won" conflated two events | "is now over" for ended; "first to complete" for personal win (leveldb) |
+
+**Key lesson:** leveldb plugin is the most authoritative and recent source for Aardwolf message formats. Cross-reference all three sources before committing to a pattern.
+
+### CP Parsing: Crowley vs WinkleGold
+
+| Aspect | Crowley | WinkleGold | Our Choice |
+|--------|---------|------------|------------|
+| Parse cp info | Yes (gets level) | No | Yes — level needed for room-based CP filtering |
+| Parse cp check | Yes | Yes (primary) | Yes — authoritative list with dead flags |
+| Area detection | Static areaNameXref table (~260 entries) | Mapper DB UNION query | Mapper DB first, CONST.AREA_NAME_XREF fallback |
+| Mob name parsing | Character-by-character with paren counter | Regex `[^\(]+` (breaks on parens in names) | Greedy regex backtracking (handles parens correctly) |
+| Dead flag | Parsed in callback via string check | Regex named capture `(?<isdead>)` | Regex capturing group `(?: - (Dead))?` |
+| Keyword timing | Upfront during list build | Lazy on target selection | Upfront (Crowley's approach — keywords ready for display) |
+| Room-based duplicates | One entry per possibility, `unlikely` flag | Multiple entries, `removed_guesses` | Multiple entries, most likely marked with `likely` flag and sorted first (WinkleGold's battle-tested approach) |
+
+### Hunt Trick Design (WinkleGold — authoritative)
+
+WinkleGold's hunt trick implementation is well-designed and battle-tested:
+- `hunt N.<keyword>` cycles through numbered instances of mobs with same keyword
+- "Unable to hunt" = **SUCCESS** (game blocks hunting CP targets directly)
+- "Direction" response = wrong mob, increment N and retry
+- "No one by that name" = exhausted, keyword wrong
+- After finding correct N, follows up with `qw N.<keyword>`
+- Three triggers: continue (direction), complete (unable=found), abort (not found/fighting)
+
+### GQ Lifecycle (from Crowley + leveldb)
+
+Crowley tracks join and start as separate events with `gqid_joined`/`gqid_started` variables. GQ triggers only activate when both have occurred for the same GQ number. This handles:
+- Join before start: wait until GQ starts to parse targets
+- Join after start: immediate target parsing
+- GQ end while joined: cleanup state
+
+New triggers added based on leveldb: won, cancelled, quit, not_in.
+
+### xrt Command Clarification
+
+`xrt` (xrun_to) is a speedwalk command, NOT a retarget command:
+1. Look up area start room (user-marked or default from DB)
+2. Fall back to mapper DB (exact area key, then fuzzy name match)
+3. Execute `mapper goto <roomid>`
+4. Handle Vidblain special case (need to runto vidblain continent first)

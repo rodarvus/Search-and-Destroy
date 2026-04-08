@@ -1,6 +1,6 @@
 # Search & Destroy v2
 
-**Status: Work in Progress** - Phase 1 (Foundation) is complete. The plugin is not yet ready for general use.
+**Status: Work in Progress** - Phase 2 (Campaign Pipeline) is in progress. The plugin is not yet ready for general use.
 
 ## What is this?
 
@@ -15,15 +15,17 @@ The goal is to combine the strengths of both into a cleaner, more maintainable, 
 
 ## Current Status
 
-| Phase | Name | Status |
-|-------|------|--------|
-| 1 | Foundation | **Complete** (220/220 tests) |
-| 2 | Campaign Pipeline | Not started |
-| 3 | Hunting Tools | Not started |
-| 4 | Smart Features | Not started |
-| 5 | GQ Support | Not started |
-| 6 | GUI Plugin | Not started |
-| 7 | Polish | Not started |
+| Phase | Name | Status | Tests |
+|-------|------|--------|-------|
+| 1 | Foundation | **Complete** | 220 |
+| 2 | Campaign Pipeline | **In Progress** | 380 |
+| 3 | Hunting Tools | Not started | - |
+| 4 | Smart Features | Not started | - |
+| 5 | GQ Support | Not started | - |
+| 6 | GUI Plugin | Not started | - |
+| 7 | Polish | Not started | - |
+
+**Total: 380/380 tests passing.**
 
 ## Project Plan
 
@@ -40,14 +42,16 @@ Core infrastructure that everything else builds on:
 - **Noexp** - Auto-noexp toggling based on TNL cutoff, level 200+ bypass
 - **Test suite** - 220 tests covering all modules, with real SQLite integration testing
 
-### Phase 2: Campaign Pipeline (Next)
+### Phase 2: Campaign Pipeline (In Progress)
 
-The core gameplay loop:
+The core gameplay loop — take CP, parse targets, navigate, kill, repeat:
 
-- **TargetList** - Parse CP info/check output into a unified target list with keyword guessing and mapper DB lookups
-- **CP** - Campaign info/check trigger parsing, event handlers (mob killed, complete, cleared, new available)
-- **DamageTracker** - Single combined regex for 98 damage verbs (instead of 98 separate triggers)
-- **Nav** - Speedwalk to area start rooms, goto room by number, execute hunt/where/scan on arrival
+- **TargetList** (done) - Parse CP info/check output into a unified target list with keyword guessing, mapper DB lookups with CONST fallback, mob history integration, area-based vs room-based CP detection. Room-based CPs with multiple area matches show all possibilities with most likely marked first.
+- **AREA_NAME_XREF** (done) - ~260 area long name to area key mappings (from Crowley), used as fallback when mapper DB unavailable
+- **Trigger patterns** (done) - All 40+ triggers validated via PCRE (rex_pcre) against verified game output. 6 wrong patterns fixed, 7 new triggers added (GQ lifecycle, powerup, CP timer, kill detection).
+- **CP** (next) - Campaign info/check trigger callbacks, CP state machine
+- **DamageTracker** (next) - Single combined regex for all damage verbs
+- **Nav** (next) - Speedwalk to area start rooms via mapper, Vidblain handling
 - Wire up `xcp`, `go`, `nx`, `xrt` commands
 
 ### Phase 3: Hunting Tools
@@ -135,7 +139,7 @@ A git pre-commit hook automatically runs the test suite and blocks commits on an
 | `qs` | Quick scan: scan + consider |
 | `ah [mob]` | Auto-hunt: follow hunt directions |
 | `kk` | Quick kill current target |
-| `xrt [keyword]` | Re-target with new keyword |
+| `xrt [area]` | Run to area start room |
 | `xset [setting]` | View/change settings |
 | `xhelp` | Show all commands |
 
