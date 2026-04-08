@@ -219,16 +219,42 @@ TestData.cp_events = {
 }
 
 ------------------------------------------------------------------------
--- GQ event messages
+-- GQ event messages (verified against leveldb + Crowley)
 ------------------------------------------------------------------------
 TestData.gq_events = {
    mob_killed = "Congratulations, that was one of the GLOBAL QUEST mobs!",
-   joined = "You have joined Global Quest # 12345.",
-   started = "Global Quest # 12345 has now started!",
+   joined = "You have now joined Global Quest # 12345. See 'help gquest' for available commands.",
+   started = "Global Quest: Global quest # 12345 for levels 40 to 50 has now started.",
+   started_with_limit = "Global Quest: Global quest # 12345 for levels 40 to 50 - 200 or fewer wins only has now started.",
    finished = "You have finished this global quest.",
-   ended = "Global Quest # 12345 has ended.",
-   won = "Global Quest # 12345 has been won.",
+   ended = "Global Quest: Global quest # 12345 is now over.",
+   ended_extended = "Global Quest: Global quest # 12345 (extended) is now over.",
+   won = "You were the first to complete this quest!",
    not_started = "Global Quest # 12345 has not yet started.",
+   cancelled = "Global Quest: Global quest # 12345 has been cancelled due to lack of activity.",
+   quit = "You are no longer part of Global Quest # 12345 and will be unable to rejoin.",
+   not_in = "You are not in a global quest.",
 }
+
+------------------------------------------------------------------------
+-- Quick where output (verified against live game output)
+------------------------------------------------------------------------
+TestData.qw_match = {
+   {line = "Mother Mystra                  An Intersection in the Temple",
+    mob = "Mother Mystra", room = "An Intersection in the Temple"},
+   {line = "a sinister vandal              A Dusty Room",
+    mob = "a sinister vandal", room = "A Dusty Room"},
+}
+
+TestData.qw_no_match = {
+   "There is no hassan around here.",
+   "There is no 2.vandal around here.",
+}
+
+------------------------------------------------------------------------
+-- Level up / powerup messages (verified against leveldb + Crowley)
+------------------------------------------------------------------------
+TestData.level_up = "You raise a level! You are now level 51."
+TestData.powerup = "Congratulations, Rodarvus. You have increased your powerups to 5."
 
 return TestData
