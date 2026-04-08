@@ -81,15 +81,17 @@ end)
 ------------------------------------------------------------------------
 
 run_test("trg_cp_check_line", function()
-   local pat = [[^You still have to kill \* (.+) \((.+?)(?: - Dead)?\)$]]
-   -- Alive target
-   local mob, loc = pcre_match(pat, "You still have to kill * a sinister vandal (The Three Pillars of Diatz)")
+   local pat = [[^You still have to kill \* (.+) \((.+?)(?: - (Dead))?\)$]]
+   -- Alive target: group 3 is false (unmatched capture)
+   local mob, loc, dead = pcre_match(pat, "You still have to kill * a sinister vandal (The Three Pillars of Diatz)")
    assert_equal("a sinister vandal", mob, "alive mob name")
    assert_equal("The Three Pillars of Diatz", loc, "alive location")
-   -- Dead target
-   mob, loc = pcre_match(pat, "You still have to kill * a mutated goat (The Killing Fields - Dead)")
+   assert_equal(false, dead, "alive: dead capture is false")
+   -- Dead target: group 3 is "Dead"
+   mob, loc, dead = pcre_match(pat, "You still have to kill * a mutated goat (The Killing Fields - Dead)")
    assert_equal("a mutated goat", mob, "dead mob name")
    assert_equal("The Killing Fields", loc, "dead location (- Dead stripped)")
+   assert_equal("Dead", dead, "dead: captures Dead string")
    -- Negative
    assert_nil(pcre_find(pat, "Find and kill 1 * a goblin (Test)"), "info line doesn't match check")
 end)

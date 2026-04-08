@@ -215,7 +215,7 @@ Based on Crowley's and WinkleGold's Search and Destroy plugins.
 
    <!-- ==================== CP CHECK ==================== -->
    <trigger name="trg_cp_check_line"
-      match="^You still have to kill \* (.+) \((.+?)(?: - Dead)?\)$"
+      match="^You still have to kill \* (.+) \((.+?)(?: - (Dead))?\)$"
       enabled="n"
       regexp="y"
       omit_from_output="y"
@@ -1168,6 +1168,268 @@ CONST = {
    VIDBLAIN_AREAS = {
       "asherodan", "darklight", "imperial", "omentor", "sendhian", "vidblain",
    },
+
+   -- Area long name → area key cross-reference (from Crowley's areaNameXref)
+   -- Used as fallback when mapper DB is unavailable for area detection
+   AREA_NAME_XREF = {
+      ["A Genie's Last Wish"] = "geniewish",
+      ["A Magical Hodgepodge"] = "hodgepodge",
+      ["A Peaceful Giant Village"] = "village",
+      ["Aardington Estate"] = "aardington",
+      ["Aardwolf Zoological Park"] = "zoo",
+      ["Adventures in Sendhia"] = "sendhian",
+      ["Aerial City of Cineko"] = "cineko",
+      ["Afterglow"] = "afterglow",
+      ["Alagh, the Blood Lands"] = "alagh",
+      ["All in a Fayke Day"] = "fayke",
+      ["Ancient Greece"] = "greece",
+      ["Andolor's Ocean Adventure Park"] = "oceanpark",
+      ["Annwn"] = "annwn",
+      ["Anthrox"] = "anthrox",
+      ["Arboretum"] = "arboretum",
+      ["Arisian Realm"] = "arisian",
+      ["Art of Melody"] = "melody",
+      ["Artificer's Mayhem"] = "mayhem",
+      ["Ascension Bluff Nursing Home"] = "nursing",
+      ["Atlantis"] = "atlantis",
+      ["Avian Kingdom"] = "avian",
+      ["Battlefields of Adaldar"] = "adaldar",
+      ["Black Lagoon"] = "lagoon",
+      ["Black Rose"] = "blackrose",
+      ["Bloodlust Dungeon"] = "dungeon",
+      ["Brightsea and Glimmerdim"] = "glimmerdim",
+      ["Canyon Memorial Hospital"] = "canyon",
+      ["Castle Vlad-Shamir"] = "vlad",
+      ["Chaprenula's Laboratory"] = "lab",
+      ["Child's Play"] = "childsplay",
+      ["Christmas Vacation"] = "xmas",
+      ["Cloud City of Gnomalin"] = "gnomalin",
+      ["Cradlebrook"] = "cradle",
+      ["Crossroads of Fortune"] = "fortune",
+      ["Crynn's Church"] = "crynn",
+      ["Dark Elf Stronghold"] = "stronghold",
+      ["Death's Manor"] = "manor",
+      ["Deathtrap Dungeon"] = "deathtrap",
+      ["Den of Thieves"] = "thieves",
+      ["Descent to Hell"] = "hell",
+      ["Desert Doom"] = "ddoom",
+      ["Dhal'Gora Outlands"] = "dhalgora",
+      ["Diamond Soul Revelation"] = "dsr",
+      ["Dortmund"] = "dortmund",
+      ["Dread Tower"] = "dread",
+      ["Dusk Valley"] = "duskvalley",
+      ["Earth Plane 4"] = "earthplane",
+      ["Elemental Chaos"] = "elemental",
+      ["Empyrean, Streets of Downfall"] = "empyrean",
+      ["Entrance to Hades"] = "hades",
+      ["Eternal Autumn"] = "autumn",
+      ["Faerie Tales"] = "ft1",
+      ["Faerie Tales II"] = "ftii",
+      ["Fantasy Fields"] = "fantasy",
+      ["Foolish Promises"] = "promises",
+      ["Fort Terramire"] = "terramire",
+      ["Gallows Hill"] = "gallows",
+      ["Gelidus"] = "gelidus",
+      ["Giant's Pet Store"] = "petstore",
+      ["Gilda And The Dragon"] = "gilda",
+      ["Gnoll's Quarry"] = "quarry",
+      ["Gold Rush"] = "goldrush",
+      ["Guardian's Spyre of Knowledge"] = "spyreknow",
+      ["Halls of the Damned"] = "damned",
+      ["Hatchling Aerie"] = "hatchling",
+      ["Hedgehogs' Paradise"] = "hedge",
+      ["Helegear Sea"] = "helegear",
+      ["Hotel Orlando"] = "orlando",
+      ["House of Cards"] = "cards",
+      ["Icefall"] = "icefall",
+      ["Imagi's Nation"] = "imagi",
+      ["Imperial Nation"] = "imperial",
+      ["Insanitaria"] = "insan",
+      ["Into the Long Night"] = "longnight",
+      ["Intrigues of Times Past"] = "times",
+      ["Island of Lost Time"] = "losttime",
+      ["Jenny's Tavern"] = "jenny",
+      ["Jotunheim"] = "jotun",
+      ["Jungles of Verume"] = "verume",
+      ["Keep of the Kobaloi"] = "kobaloi",
+      ["Kerofk"] = "kerofk",
+      ["Ketu Uplands"] = "ketu",
+      ["Kiksaadi Cove"] = "cove",
+      ["Kimr's Farm"] = "farm",
+      ["Kingdom of Ahner"] = "ahner",
+      ["Kingsholm"] = "kingsholm",
+      ["Kobold Siege Camp"] = "siege",
+      ["Kul Tiras"] = "kultiras",
+      ["Land of Legend"] = "legend",
+      ["Living Mines of Dak'Tai"] = "livingmine",
+      ["Masquerade Island"] = "masq",
+      ["Mount duNoir"] = "dunoir",
+      ["Mudwog's Swamp"] = "mudwog",
+      ["Nanjiki Ruins"] = "nanjiki",
+      ["Nebulous Horizon"] = "horizon",
+      ["Necromancers' Guild"] = "necro",
+      ["Nenukon and the Far Country"] = "nenukon",
+      ["New Thalos"] = "newthalos",
+      ["Northstar"] = "northstar",
+      ["Nottingham"] = "nottingham",
+      ["Olde Worlde Carnivale"] = "carnivale",
+      ["Onyx Bazaar"] = "bazaar",
+      ["Ookushka Garrison"] = "ooku",
+      ["Paradise Lost"] = "paradise",
+      ["Plains of Nulan'Boar"] = "nulan",
+      ["Pompeii"] = "pompeii",
+      ["Prosper's Island"] = "prosper",
+      ["Qong"] = "qong",
+      ["Radiance Woods"] = "radiance",
+      ["Raganatittu"] = "raga",
+      ["Realm of Deneria"] = "deneria",
+      ["Realm of the Firebird"] = "firebird",
+      ["Realm of the Sacred Flame"] = "firenation",
+      ["Realm of the Zodiac"] = "zodiac",
+      ["Rebellion of the Nix"] = "rebellion",
+      ["Rosewood Castle"] = "rosewood",
+      ["Sagewood Grove"] = "sagewood",
+      ["Sanctity of Eternal Damnation"] = "sanctity",
+      ["Sen'narre Lake"] = "sennarre",
+      ["Seven Wonders"] = "wonders",
+      ["Shadow's End"] = "shadowsend",
+      ["Sheila's Cat Sanctuary"] = "cats",
+      ["Sho'aram, Castle in the Sand"] = "sandcastle",
+      ["Siren's Oasis Resort"] = "sirens",
+      ["Snuckles Village"] = "snuckles",
+      ["Storm Mountain"] = "storm",
+      ["Storm Ships of Lem-Dagor"] = "lemdagor",
+      ["Sundered Vale"] = "vale",
+      ["Swordbreaker's Hoard"] = "hoard",
+      ["Tairayden Peninsula"] = "peninsula",
+      ["Tai'rha Laym"] = "laym",
+      ["Takeda's Warcamp"] = "takeda",
+      ["Tanra'vea"] = "tanra",
+      ["Thandeld's Conflict"] = "conflict",
+      ["The Abyssal Caverns of Sahuagin"] = "sahuagin",
+      ["The Amazon Nation"] = "amazon",
+      ["The Amusement Park"] = "amusement",
+      ["The Archipelago of Entropy"] = "entropy",
+      ["The Astral Travels"] = "astral",
+      ["The Aylorian Academy"] = "academy",
+      ["The Blighted Tundra of Andarin"] = "andarin",
+      ["The Blood Opal of Rauko'ra"] = "raukora",
+      ["The Blood Sanctum"] = "sanctum",
+      ["The Broken Halls of Horath"] = "horath",
+      ["The Call of Heroes"] = "callhero",
+      ["The Cataclysm"] = "cataclysm",
+      ["The Chasm and The Catacombs"] = "chasm",
+      ["The Chessboard"] = "chessboard",
+      ["The Continent of Mesolar"] = "mesolar",
+      ["The Coral Kingdom"] = "coral",
+      ["The Cougarian Queendom"] = "cougarian",
+      ["The Council of the Wyrm"] = "wyrm",
+      ["The Covenant of Mistridge"] = "mistridge",
+      ["The Cracks of Terra"] = "terra",
+      ["The Curse of the Midnight Fens"] = "fens",
+      ["The Dark Continent, Abend"] = "abend",
+      ["The Dark Temple of Zyian"] = "zyian",
+      ["The DarkLight"] = "darklight",
+      ["The Darkside of the Fractured Lands"] = "darkside",
+      ["The Deadlights"] = "deadlights",
+      ["The Desert Prison"] = "desert",
+      ["The Drageran Empire"] = "drageran",
+      ["The Dungeon of Doom"] = "dundoom",
+      ["The Earth Lords"] = "earthlords",
+      ["The Eighteenth Dynasty"] = "dynasty",
+      ["The Empire of Aiighialla"] = "empire",
+      ["The Empire of Talsa"] = "talsa",
+      ["The Fabled City of Stone"] = "stone",
+      ["The Fire Swamp"] = "fireswamp",
+      ["The First Ascent"] = "ascent",
+      ["The Flying Citadel"] = "citadel",
+      ["The Forest of Li'Dnesh"] = "lidnesh",
+      ["The Fractured Lands"] = "fractured",
+      ["The Gathering Horde"] = "gathering",
+      ["The Gauntlet"] = "gauntlet",
+      ["The Gladiator's Arena"] = "arena",
+      ["The Glamdursil"] = "glamdursil",
+      ["The Goblin Fortress"] = "fortress",
+      ["The Grand City of Aylor"] = "aylor",
+      ["The Graveyard"] = "graveyard",
+      ["The Great City of Knossos"] = "knossos",
+      ["The Great Salt Flats"] = "salt",
+      ["The Icy Caldera of Mauldoon"] = "caldera",
+      ["The Imperial City of Reme"] = "reme",
+      ["The Infestation"] = "infest",
+      ["The Keep of Kearvek"] = "kearvek",
+      ["The Keep of the Asherodan"] = "asherodan",
+      ["The Killing Fields"] = "fields",
+      ["The Labyrinth"] = "labyrinth",
+      ["The Land of Oz"] = "landofoz",
+      ["The Land of the Beer Goblins"] = "beer",
+      ["The Lower Planes"] = "lplanes",
+      ["The Maelstrom"] = "maelstrom",
+      ["The Marshlands of Agroth"] = "agroth",
+      ["The Misty Shores of Yarr"] = "yarr",
+      ["The Monastery"] = "monastery",
+      ["The Mountains of Desolation"] = "desolation",
+      ["The Nine Hells"] = "ninehells",
+      ["The Nyne Woods"] = "nynewoods",
+      ["The Old Cathedral"] = "cathedral",
+      ["The Palace of Song"] = "songpalace",
+      ["The Partroxis"] = "partroxis",
+      ["The Path of the Believer"] = "believer",
+      ["The Realm of Infamy"] = "infamy",
+      ["The Realm of the Hawklords"] = "hawklord",
+      ["The Relinquished Tombs"] = "tombs",
+      ["The Reman Conspiracy"] = "remcon",
+      ["The Ruins of Diamond Reach"] = "ruins",
+      ["The Ruins of Stormhaven"] = "stormhaven",
+      ["The Sanguine Tavern"] = "sanguine",
+      ["The Scarred Lands"] = "scarred",
+      ["The School of Horror"] = "soh",
+      ["The School of Horror, Part 2"] = "sohtwo",
+      ["The Shadows of Minos"] = "minos",
+      ["The Silver Volcano"] = "volcano",
+      ["The Slaughter House"] = "slaughter",
+      ["The Southern Ocean"] = "southern",
+      ["The Stuff of Shadows"] = "stuff",
+      ["The Temple of Shal'indrael"] = "temple",
+      ["The Temple of Shouggoth"] = "shouggoth",
+      ["The Three Pillars of Diatz"] = "diatz",
+      ["The Titans' Keep"] = "titan",
+      ["The Tournament of Illoria"] = "illoria",
+      ["The Town of Solan"] = "solan",
+      ["The Tree of Life"] = "tol",
+      ["The Trouble with Gwillimberry"] = "gwillim",
+      ["The Uncharted Oceans"] = "uncharted",
+      ["The UnderDark"] = "underdark",
+      ["The Upper Planes"] = "uplanes",
+      ["The Uprising"] = "uprising",
+      ["The Were Wood"] = "werewood",
+      ["The Witches of Omen Tor"] = "omentor",
+      ["The Wobbly Woes of Woobleville"] = "wooble",
+      ["The Wood Elves of Nalondir"] = "woodelves",
+      ["The Yurgach Domain"] = "yurgach",
+      ["Tilule Rehabilitation Clinic"] = "tilule",
+      ["Tir na nOg"] = "tirna",
+      ["Tournament Camps"] = "camps",
+      ["Transcendece"] = "transcend",
+      ["Tribal Origins"] = "origins",
+      ["Tumari's Diner"] = "diner",
+      ["Umari's Castle"] = "umari",
+      ["Unearthly Bonds"] = "bonds",
+      ["Verdure Estate"] = "verdure",
+      ["Vidblain, the Ever Dark"] = "vidblain",
+      ["War of the Wizards"] = "wizards",
+      ["Warrior's Training Camp"] = "wtc",
+      ["Wayward Alehouse"] = "alehouse",
+      ["Wayfarer's Caravan"] = "caravan",
+      ["Weather Observatory"] = "weather",
+      ["Wedded Bliss"] = "bliss",
+      ["Wildwood"] = "wildwood",
+      ["Winds of Fate"] = "winds",
+      ["Winterlands"] = "winter",
+      ["Xyl's Mosaic"] = "xylmos",
+      ["Yggdrasil: The World Tree"] = "ygg",
+      ["Zangar's Demonic Grotto"] = "zangar",
+   },
 }
 
 ------------------------------------------------------------------------
@@ -1832,11 +2094,171 @@ Quest = {
 }
 
 ------------------------------------------------------------------------
--- TargetList: Build unified target lists (stub - Phase 2)
+-- TargetList: Build unified target lists from CP/GQ output
 ------------------------------------------------------------------------
 TargetList = {
    _main_list = {},
+   _type = "none",  -- "area", "room", "none"
 }
+
+--- Determine if CP is area-based or room-based by checking locations
+-- against the area name cross-reference (mapper DB first, then CONST fallback)
+function TargetList.detect_type(info_list)
+   if #info_list == 0 then return "none" end
+   local area_count = 0
+   local room_count = 0
+   for _, entry in ipairs(info_list) do
+      if TargetList.resolve_area_key(entry.location) then
+         area_count = area_count + 1
+      else
+         room_count = room_count + 1
+      end
+   end
+   if area_count >= room_count then
+      return "area"
+   else
+      return "room"
+   end
+end
+
+--- Resolve an area long name to an area key
+-- Tries mapper DB first, falls back to CONST.AREA_NAME_XREF
+function TargetList.resolve_area_key(location)
+   -- Try mapper DB: query areas table for exact name match
+   local ret, result = Util.map_query(
+      string.format("SELECT uid FROM areas WHERE name = %s", Util.fixsql(location))
+   )
+   if ret == 0 and result and result ~= "" then
+      -- Parse mapper result (returns area uid)
+      local uid = result:match("^(%S+)")
+      if uid then return uid end
+   end
+   -- Fallback to static cross-reference
+   return CONST.AREA_NAME_XREF[location]
+end
+
+--- Build the target list from cp check data
+-- @param check_list Table of {mob, location, dead} from cp check parsing
+-- @param cp_type "area" or "room"
+-- @param cp_level Level when CP was taken
+function TargetList.build(check_list, cp_type, cp_level)
+   TargetList._main_list = {}
+   TargetList._type = cp_type
+
+   for i, entry in ipairs(check_list) do
+      local area_key = TargetList.resolve_area_key(entry.location)
+      local link_type = area_key and cp_type or "unknown"
+
+      -- Generate keyword
+      local keyword = ""
+      if area_key then
+         keyword = MobKeyword.guess(entry.mob, area_key)
+      else
+         keyword = MobKeyword.guess(entry.mob, "")
+      end
+
+      -- Look up mob history in our database
+      local rooms = {}
+      local found_in_area = false
+      if area_key then
+         local db_results = DB.find_mob(entry.mob, area_key)
+         if db_results and #db_results > 0 then
+            found_in_area = true
+            for _, row in ipairs(db_results) do
+               rooms[#rooms + 1] = {
+                  roomid = row.roomid,
+                  room_name = row.room,
+                  freq = row.freq,
+               }
+            end
+         end
+      end
+
+      local target = {
+         mob = entry.mob,
+         location = entry.location,
+         area_key = area_key,
+         keyword = keyword,
+         dead = entry.dead or false,
+         link_type = link_type,
+         roomid = nil,       -- populated for room-based CPs
+         room_name = nil,    -- populated for room-based CPs
+         rooms = rooms,
+         found_in_area = found_in_area,
+         unlikely = false,
+         likely = false,
+         min_level = nil,
+         max_level = nil,
+         index = 0,          -- set after sorting
+      }
+
+      target._input_order = i  -- track original order for stable sort
+      TargetList._main_list[#TargetList._main_list + 1] = target
+   end
+
+   -- Sort: alive first, then dead; within same status, preserve input order
+   table.sort(TargetList._main_list, function(a, b)
+      if a.dead ~= b.dead then
+         return not a.dead  -- alive (false) before dead (true)
+      end
+      return a._input_order < b._input_order
+   end)
+
+   -- Assign indices after sorting
+   for i, t in ipairs(TargetList._main_list) do
+      t.index = i
+   end
+
+   -- Broadcast target list to GUI
+   State.broadcast(CONST.BCAST_TARGET_LIST, json.encode(TargetList._main_list))
+end
+
+--- Get target by index
+function TargetList.get(index)
+   return TargetList._main_list[index]
+end
+
+--- Get total target count
+function TargetList.count()
+   return #TargetList._main_list
+end
+
+--- Get list of alive targets only
+function TargetList.get_alive()
+   local alive = {}
+   for _, t in ipairs(TargetList._main_list) do
+      if not t.dead then
+         alive[#alive + 1] = t
+      end
+   end
+   return alive
+end
+
+--- Find target by mob name (first match)
+function TargetList.find_by_mob(mob_name)
+   for _, t in ipairs(TargetList._main_list) do
+      if t.mob == mob_name then
+         return t
+      end
+   end
+   return nil
+end
+
+--- Mark a target as dead by mob name
+function TargetList.update_dead(mob_name)
+   for _, t in ipairs(TargetList._main_list) do
+      if t.mob == mob_name then
+         t.dead = true
+         return
+      end
+   end
+end
+
+--- Clear the target list
+function TargetList.clear()
+   TargetList._main_list = {}
+   TargetList._type = "none"
+end
 
 ------------------------------------------------------------------------
 -- Nav: Navigation (stub - Phase 2)
