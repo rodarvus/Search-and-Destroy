@@ -1475,6 +1475,10 @@ local lua_error = error  -- save built-in error() before Util.error overwrites i
 Util = {}
 
 --- Retrieve GMCP data via the handler plugin
+-- @param path GMCP data path (e.g., "char.status", "room.info")
+-- @return Lua table/value from GMCP, or nil on failure
+-- Side effects: calls CallPlugin to GMCP handler
+-- Tested by: (untested — depends on plugin infrastructure)
 function Util.gmcp(path)
    local ret, datastring = CallPlugin(CONST.GMCP_HANDLER, "gmcpdata_as_string", path)
    if ret ~= 0 or not datastring or datastring == "" then
@@ -1488,16 +1492,24 @@ function Util.gmcp(path)
 end
 
 --- Send a GMCP packet via the handler plugin
+-- @param data GMCP packet string
+-- Tested by: (untested — depends on plugin infrastructure)
 function Util.send_gmcp(data)
    CallPlugin(CONST.GMCP_HANDLER, "Send_GMCP_Packet", data)
 end
 
---- Query the mapper database
+--- Query the mapper database via mapper plugin
+-- @param sql SQL query string
+-- @return ret (0=success), result (string)
+-- Tested by: (untested — depends on plugin infrastructure)
 function Util.map_query(sql)
    return CallPlugin(CONST.GMCP_MAPPER, "map_find_query", sql)
 end
 
 --- Escape a string for SQL: wraps in single quotes, doubles internal quotes
+-- @param s value to escape (string, number, or nil)
+-- @return SQL-safe string: "'value'" or "NULL" for nil
+-- Tested by: Util.fixsql, DB.fixsql_integration, DB.fixsql_prevents_injection
 function Util.fixsql(s)
    if s then
       return "'" .. (string.gsub(tostring(s), "'", "''")) .. "'"
@@ -1507,12 +1519,19 @@ function Util.fixsql(s)
 end
 
 --- Trim leading and trailing whitespace
+-- @param s string (or nil)
+-- @return trimmed string, "" for nil
+-- Tested by: Util.trim
 function Util.trim(s)
    if not s then return "" end
    return s:match("^%s*(.-)%s*$")
 end
 
 --- Split string by delimiter pattern (returns table of tokens)
+-- @param str string to split
+-- @param pattern Lua pattern (default: whitespace split)
+-- @return table of matched tokens
+-- Tested by: Util.split
 function Util.split(str, pattern)
    local result = {}
    for token in string.gmatch(str, pattern or "[^%s]+") do
@@ -1521,7 +1540,10 @@ function Util.split(str, pattern)
    return result
 end
 
---- Strip Aardwolf color codes from a string
+--- Strip Aardwolf @-color codes from a string
+-- @param s colored string (or nil)
+-- @return plain text without color codes, "" for nil
+-- Tested by: Util.strip_colours
 function Util.strip_colours(s)
    if not s then return "" end
    s = s:gsub("@@", "\0")
@@ -1532,6 +1554,10 @@ function Util.strip_colours(s)
 end
 
 --- Truncate string to max length, appending "..." if truncated
+-- @param s string (or nil)
+-- @param maxlen max length (default 20)
+-- @return truncated string with "..." or original if fits, "" for nil
+-- Tested by: Util.ellipsify
 function Util.ellipsify(s, maxlen)
    if not s then return "" end
    maxlen = maxlen or 20
@@ -1573,7 +1599,10 @@ function Util._note(messages, color1, color2, bg)
    Note("")
 end
 
---- Banker's rounding
+--- Banker's rounding (round half to even)
+-- @param x number
+-- @return integer, with ties rounding to even (1.5→2, 2.5→2)
+-- Tested by: Util.round
 function Util.round(x)
    if x == 0 then return 0 end
    if (x + 0.5) % 2 == 0 then
@@ -1612,6 +1641,9 @@ Config._defaults = {
    gq_extra_aliases   = "on",
 }
 
+--- Load settings from MUSHclient variables, falling back to _defaults
+-- Side effects: populates Config._settings from GetVariable("snd_<key>")
+-- Tested by: Config.load, Config.load_with_stored, Config.roundtrip
 function Config.load()
    for key, default in pairs(Config._defaults) do
       local val = GetVariable("snd_" .. key)
@@ -1619,6 +1651,9 @@ function Config.load()
    end
 end
 
+--- Save dirty settings to MUSHclient variables (no-op if not dirty)
+-- Side effects: SetVariable("snd_<key>", val) for each setting, clears _dirty
+-- Tested by: Config.save, Config.save_not_dirty, Config.roundtrip
 function Config.save()
    if not Config._dirty then return end
    for key, val in pairs(Config._settings) do
@@ -1627,10 +1662,20 @@ function Config.save()
    Config._dirty = false
 end
 
+--- Get a config value, falling back to default
+-- @param key setting name
+-- @return string value or nil if unknown key
+-- Tested by: Config.load, Config.get_default_fallback
 function Config.get(key)
    return Config._settings[key] or Config._defaults[key]
 end
 
+--- Set a config value (rejects unknown keys)
+-- @param key setting name (must exist in _defaults)
+-- @param value new value string
+-- @return true if set, false if unknown key
+-- Side effects: sets _dirty flag
+-- Tested by: Config.set, Config.set_invalid, cmd_xset.set_config_value
 function Config.set(key, value)
    if Config._defaults[key] == nil then
       Util.error("Unknown setting: ", key)
@@ -1650,6 +1695,9 @@ DB = {
    _path = nil,
 }
 
+--- Get the database file path (plugin directory + "Search_and_Destroy.db")
+-- @return absolute file path string
+-- Tested by: DB.get_path
 function DB.get_path()
    if not DB._path then
       DB._path = GetPluginInfo(GetPluginID(), 20) .. "Search_and_Destroy.db"
@@ -1657,6 +1705,9 @@ function DB.get_path()
    return DB._path
 end
 
+--- Open the database (cached — returns existing handle if already open)
+-- @return sqlite3 database handle or nil on failure
+-- Side effects: logs error via Util.error if open fails
 function DB.open()
    if DB._db then return DB._db end
    DB._db = sqlite3.open(DB.get_path())
@@ -1666,6 +1717,8 @@ function DB.open()
    return DB._db
 end
 
+--- Close the database handle
+-- Side effects: closes sqlite3 connection, sets DB._db = nil
 function DB.close()
    if DB._db then
       DB._db:close()
@@ -1673,7 +1726,11 @@ function DB.close()
    end
 end
 
---- Execute SQL in a transaction
+--- Execute multiple SQL statements in a transaction (rollback on error)
+-- @param statements table of SQL strings
+-- @return true on success, or false + error message on failure
+-- Side effects: DB writes, rollback on error
+-- Tested by: DB.execute_transaction_success, DB.execute_transaction_rollback
 function DB.execute_transaction(statements)
    local db = DB.open()
    db:execute("BEGIN TRANSACTION;")
@@ -1690,7 +1747,10 @@ function DB.execute_transaction(statements)
    return true
 end
 
---- Execute a single SQL statement, return result rows as table
+--- Execute a SELECT query, return result rows as table
+-- @param sql SQL query string
+-- @return table of row tables (empty table if no results, never nil)
+-- Tested by: DB.query_empty_result, DB.schema_created, and many others
 function DB.query(sql)
    local db = DB.open()
    local results = {}
@@ -1700,7 +1760,9 @@ function DB.query(sql)
    return results
 end
 
---- Execute a single SQL statement (no results)
+--- Execute a single SQL statement (INSERT/UPDATE/DELETE, no results)
+-- @param sql SQL statement
+-- @return true on success, false on error (logged via Util.debug)
 function DB.execute(sql)
    local db = DB.open()
    local rc = db:execute(sql)
@@ -1724,7 +1786,9 @@ function DB.set_version(v)
    DB.execute(string.format("PRAGMA user_version = %d;", v))
 end
 
---- Initialize database: create tables if needed, run migrations
+--- Initialize database: create schema + seed data on first run, migrate on version change
+-- Side effects: creates tables, seeds start_rooms + mob_overrides, sets PRAGMA user_version
+-- Tested by: DB.schema_created, DB.schema_version, DB.init_idempotent, DB.start_rooms_seeded
 function DB.init()
    local db = DB.open()
    local version = DB.get_version()
@@ -1851,7 +1915,11 @@ function DB.migrate(from_version)
    -- if from_version < 2 then ... end
 end
 
---- Look up mob locations from S&D database
+--- Look up mob locations from S&D database, ordered by frequency
+-- @param mob_name mob name to search
+-- @param zone area key filter (empty string = all zones)
+-- @return table of rows {mob, room, roomid, zone, freq, kill_count}, empty if not found
+-- Tested by: DB.find_mob, TargetList.build_area_mob_db_lookup
 function DB.find_mob(mob_name, zone)
    local where = string.format("mob = %s", Util.fixsql(mob_name))
    if zone and zone ~= "" then
@@ -1860,7 +1928,10 @@ function DB.find_mob(mob_name, zone)
    return DB.query("SELECT * FROM mobs WHERE " .. where .. " ORDER BY freq DESC, kill_count DESC;")
 end
 
---- Look up start room for an area
+--- Look up start room for an area (DB first, then CONST fallback)
+-- @param area_key area short key (e.g., "diatz")
+-- @return roomid (number) or nil if area unknown
+-- Tested by: DB.get_start_room_default, DB.set_start_room, Nav.goto_area_basic
 function DB.get_start_room(area_key)
    local rows = DB.query(string.format(
       "SELECT roomid FROM start_rooms WHERE area_key = %s LIMIT 1;",
@@ -1885,7 +1956,11 @@ function DB.set_start_room(area_key, roomid, area_longname)
    ))
 end
 
---- Look up mob override (custom keyword, nohunt, etc.)
+--- Look up mob override (custom keyword, nohunt/nowhere/noscan flags)
+-- @param mob_name mob name (case-insensitive via COLLATE NOCASE)
+-- @param area_id area short key
+-- @return row table {keyword, no_hunt, no_where, no_scan, ...} or nil
+-- Tested by: DB.get_mob_override, DB.get_mob_override_miss
 function DB.get_mob_override(mob_name, area_id)
    local rows = DB.query(string.format(
       "SELECT * FROM mob_overrides WHERE mob_name = %s AND area_id = %s LIMIT 1;",
@@ -1894,7 +1969,13 @@ function DB.get_mob_override(mob_name, area_id)
    return rows[1]  -- nil if not found
 end
 
---- Record or update a mob sighting
+--- Record or update a mob sighting (INSERT or increment freq on conflict)
+-- @param mob_name mob display name
+-- @param room_name room display name
+-- @param roomid numeric room ID
+-- @param zone area short key
+-- Side effects: DB write, increments freq+seen_count on re-record
+-- Tested by: DB.record_mob_and_find
 function DB.record_mob(mob_name, room_name, roomid, zone)
    DB.execute(string.format(
       "INSERT INTO mobs (mob, room, roomid, zone, freq, seen_count, updated_at) VALUES (%s, %s, %d, %s, 1, 1, %d) " ..
@@ -1905,7 +1986,11 @@ function DB.record_mob(mob_name, room_name, roomid, zone)
    ))
 end
 
---- Record a mob kill
+--- Record a mob kill (increment kill_count for matching mob+zone)
+-- @param mob_name mob display name
+-- @param zone area short key
+-- Side effects: DB UPDATE mobs SET kill_count = kill_count + 1
+-- Tested by: DB.record_kill
 function DB.record_kill(mob_name, zone)
    DB.execute(string.format(
       "UPDATE mobs SET kill_count = kill_count + 1 WHERE mob = %s AND zone = %s;",
@@ -1941,6 +2026,10 @@ function State.get_activity()
    return State._activity
 end
 
+--- Set current activity and broadcast (no-op if same value)
+-- @param act "cp", "gq", "quest", or "none"
+-- Side effects: sets _dirty, broadcasts BCAST_ACTIVITY
+-- Tested by: State.set_activity, State.set_activity_same, State.activity_transitions
 function State.set_activity(act)
    if State._activity ~= act then
       State._activity = act
@@ -1949,6 +2038,10 @@ function State.set_activity(act)
    end
 end
 
+--- Set current target and broadcast change (or clear if nil)
+-- @param target target table {mob, keyword, area_key, ...} or nil to clear
+-- Side effects: _dirty, broadcasts BCAST_TARGET_CHANGED or BCAST_TARGET_CLEARED
+-- Tested by: State.set_target, State.clear_target
 function State.set_target(target)
    State._target = target
    State._dirty = true
@@ -1963,6 +2056,10 @@ function State.clear_target()
    State.set_target(nil)
 end
 
+--- Update room state from GMCP room.info data
+-- @param ri GMCP room.info table {num, zone, name, exits, details}
+-- Side effects: saves _prev_room, updates _room
+-- Tested by: State.update_room, State.update_room_maze, State.update_room_prev, State.update_room_nil_fields
 function State.update_room(ri)
    State._prev_room = State._room
    State._room = {
@@ -1974,6 +2071,10 @@ function State.update_room(ri)
    }
 end
 
+--- Update character state from GMCP char.status data
+-- @param status GMCP char.status table {state, level, tnl} (nil safe)
+-- Side effects: updates _char_state, _level, _tnl
+-- Tested by: State.update_char, State.update_char_nil
 function State.update_char(status)
    if status then
       State._char_state = status.state or "0"
@@ -2006,10 +2107,15 @@ end
 ------------------------------------------------------------------------
 MobKeyword = {}
 
---- Guess a keyword for targeting a mob
--- @param mob_name Full mob name (e.g., "a sinister vandal")
--- @param area Area ID (e.g., "diatz")
--- @return Guessed keyword string
+--- Guess a keyword for targeting a mob (6-stage algorithm)
+-- Stages: 1) DB override, 2) CONST exceptions, 3) clean punctuation,
+--         4) strip articles, 5) area filters, 6) first5+last5 or 70% truncation
+-- @param mob_name full mob display name (e.g., "a sinister vandal")
+-- @param area area short key (e.g., "diatz")
+-- @return keyword string (never nil, empty string for nil/empty input)
+-- Tested by: MobKeyword.guess_basic, _punctuation, _empty, _exceptions_hardcoded,
+--   _area_filters, _sohtwo_filters, _hyphens, _all_articles, _area_filter_to_single,
+--   _quotation_marks, _parentheses, _long_mob_name
 function MobKeyword.guess(mob_name, area)
    if not mob_name or mob_name == "" then
       return ""
@@ -2114,6 +2220,10 @@ CP = {
 }
 
 --- Start a new campaign (triggered by "Good luck in your campaign!")
+-- Side effects: sets _on_cp, activity="cp", turns noexp OFF, persists level, sends "cp info"
+-- Guard: no-op if already on CP (prevents double-call)
+-- Tested by: CP.start, CP.start_double_call_guard, CP.start_noexp_already_off,
+--   workflow.cp_request_starts_flow, workflow.cp_request_turns_noexp_off
 function CP.start()
    if CP._on_cp then return end  -- guard: prevent double-call from rapid triggers
    CP._on_cp = true
@@ -2156,6 +2266,9 @@ function CP.do_check()
 end
 
 --- Clear all CP state (campaign completed, cleared, or not on CP)
+-- Side effects: resets CP fields, clears TargetList + State target + activity
+-- TODO Phase 5: preserve GQ state when CP clears
+-- Tested by: CP.clear, workflow.cp_complete_clears_everything
 function CP.clear()
    CP._on_cp = false
    CP._level = 0
@@ -2201,7 +2314,10 @@ TargetList = {
 }
 
 --- Determine if CP is area-based or room-based by checking locations
--- against the area name cross-reference (mapper DB first, then CONST fallback)
+-- against mapper DB + CONST.AREA_NAME_XREF. Majority voting: area>=room → "area".
+-- @param info_list table of {mob, location} from cp info parsing
+-- @return "area", "room", or "none" (empty list)
+-- Tested by: TargetList.detect_type_area, _room, _majority_area, _empty
 function TargetList.detect_type(info_list)
    if #info_list == 0 then return "none" end
    local area_count = 0
@@ -2220,8 +2336,10 @@ function TargetList.detect_type(info_list)
    end
 end
 
---- Resolve an area long name to an area key
--- Tries mapper DB first, falls back to CONST.AREA_NAME_XREF
+--- Resolve an area long name to an area key (mapper DB first, CONST fallback)
+-- @param location area long name (e.g., "The Three Pillars of Diatz")
+-- @return area key string (e.g., "diatz") or nil if unknown
+-- Tested by: TargetList.resolve_area_key_nil, _known, TargetList.build_area_resolves_area_key
 function TargetList.resolve_area_key(location)
    if not location or location == "" then return nil end
    -- Try mapper DB: query areas table for exact name match
@@ -2237,10 +2355,14 @@ function TargetList.resolve_area_key(location)
    return CONST.AREA_NAME_XREF[location]
 end
 
---- Build the target list from cp check data
--- @param check_list Table of {mob, location, dead} from cp check parsing
+--- Build the target list from cp check data (keywords, room lookup, sort)
+-- @param check_list table of {mob, location, dead} from cp check parsing
 -- @param cp_type "area" or "room"
--- @param cp_level Level when CP was taken
+-- @param cp_level level when CP was taken (for room-based level filtering)
+-- Side effects: populates _main_list, broadcasts BCAST_TARGET_LIST
+-- Tested by: TargetList.build_area_basic, _resolves_area_key, _unknown_location,
+--   _keyword_generation, _mob_db_lookup, _mob_db_miss, _sorts_alive_first,
+--   _dead_flag_from_check, _room_basic
 function TargetList.build(check_list, cp_type, cp_level)
    TargetList._main_list = {}
    TargetList._type = cp_type
@@ -2422,8 +2544,10 @@ function Nav.mapper_goto(roomid)
    Execute("mapper goto " .. tostring(roomid))
 end
 
---- Fuzzy match an area key against DEFAULT_START_ROOMS
--- Returns area_key or nil. Handles ft2→ftii hack.
+--- Fuzzy match an area key against DEFAULT_START_ROOMS (prefix then substring)
+-- @param input user-typed area name or partial key
+-- @return matched area_key or nil. Handles ft2→ftii hack.
+-- Tested by: Nav.fuzzy_match_area_exact, _partial, _ft2_hack, _no_match
 function Nav.fuzzy_match_area(input)
    if not input or input == "" then return nil end
    local arid = string.lower(input)
@@ -2453,7 +2577,10 @@ function Nav.fuzzy_match_area(input)
    return nil
 end
 
---- Navigate to an area's start room
+--- Navigate to an area's start room (with Vidblain portal handling)
+-- @param area_key area short key (e.g., "diatz")
+-- Side effects: sets _dest_area, calls mapper goto, handles Vidblain portal
+-- Tested by: Nav.goto_area_basic, _sets_dest, _unknown, _ft2_hack, _vidblain, _vidblain_already_in
 function Nav.goto_area(area_key)
    if not area_key or area_key == "" then return end
 
@@ -2506,7 +2633,10 @@ function Nav.goto_next()
    Nav.mapper_goto(roomid)
 end
 
---- Called from OnPluginBroadcast on room.info — detect arrival
+--- Called from OnPluginBroadcast on room.info — detect arrival at destination
+-- @param ri GMCP room.info table {num, zone, name}
+-- Side effects: fires _on_arrive callback if dest matched, handles Vidblain deferred nav
+-- Tested by: Nav.on_room_change_area_arrival, _area_not_arrived, _room_arrival, _no_dest
 function Nav.on_room_change(ri)
    if not ri then return end
    local room_num = ri.num
@@ -2591,11 +2721,18 @@ Noexp = {
    _auto_enabled = true,
 }
 
+--- Initialize noexp from Config settings (auto on/off, TNL cutoff)
+-- Side effects: reads Config, sets _tnl_cutoff and _auto_enabled
+-- Tested by: Noexp.init_defaults, Noexp.init_custom
 function Noexp.init()
    Noexp._tnl_cutoff = tonumber(Config.get("noexp_tnl_cutoff")) or 0
    Noexp._auto_enabled = Config.get("noexp_auto") == "on"
 end
 
+--- Auto-toggle noexp based on TNL vs cutoff (guards: auto, level>=200, CP active, nil TNL)
+-- Side effects: calls Noexp.set(true/false) which sends "noexp" game command
+-- Tested by: Noexp.check_tnl_turns_on/off, _disabled, _cutoff_zero, _no_change_on/off,
+--   _level_200/201, _exact_cutoff_off/on, _skips_during_cp, _activates_without_cp
 function Noexp.check_tnl()
    if not Noexp._auto_enabled then return end
    if State._level >= 200 then
@@ -2619,6 +2756,10 @@ function Noexp.check_tnl()
    end
 end
 
+--- Toggle noexp on/off (no-op if already in desired state)
+-- @param on boolean: true = noexp on, false = noexp off
+-- Side effects: SendNoEcho("noexp"), updates State._noexp, broadcasts BCAST_NOEXP
+-- Tested by: Noexp.set_no_change, Noexp.set_broadcasts
 function Noexp.set(on)
    -- Only send command if state actually needs to change
    if Noexp._noexp_on == on then return end
