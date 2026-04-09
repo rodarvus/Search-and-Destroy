@@ -2088,6 +2088,7 @@ CP = {
 
 --- Start a new campaign (triggered by "Good luck in your campaign!")
 function CP.start()
+   if CP._on_cp then return end  -- guard: prevent double-call from rapid triggers
    CP._on_cp = true
    CP._can_get_new = false
    CP._level = State._level
@@ -2446,6 +2447,7 @@ function Nav.on_room_change(ri)
    if not ri then return end
    local room_num = ri.num
    local room_area = ri.zone
+   if not room_num or not room_area then return end
 
    -- Room-level arrival
    if Nav._dest_room and room_num == Nav._dest_room then
@@ -2541,6 +2543,7 @@ function Noexp.check_tnl()
    end
 
    local tnl = State._tnl
+   if not tnl then return end
    if Noexp._tnl_cutoff <= 0 then return end
 
    if tnl < Noexp._tnl_cutoff and not Noexp._noexp_on and not CP._on_cp then
@@ -2851,7 +2854,7 @@ function cmd_xcp(name, line, wildcards)
       -- Auto-select first alive target with known location
       local alive = TargetList.get_alive()
       for _, t in ipairs(alive) do
-         if t.link_type == "area" or t.link_type == "room" then
+         if (t.link_type == "area" or t.link_type == "room") and t.area_key then
             State.set_target(t)
             Nav.goto_area(t.area_key)
             return
@@ -3026,12 +3029,21 @@ function on_cp_check_end(name, line, wildcards)
    CP._on_cp = true
    State.set_activity("cp")
 
+   -- Guard: empty check list means parse failed
+   if #CP._check_list == 0 then
+      Util.error("CP check parse failed (no targets received)")
+      return
+   end
+
    -- Build target list from check data
    TargetList.build(CP._check_list, CP._type, CP._level)
 
-   -- Re-match target after list rebuild
-   if CP._last_target then
-      local found = TargetList.find_by_mob(CP._last_target.mob)
+   -- Always re-match current target against new list
+   -- (handles: mob killed refresh, manual refresh, other player killed a mob)
+   local prev_target = CP._last_target or State.get_target()
+   CP._last_target = nil
+   if prev_target then
+      local found = TargetList.find_by_mob(prev_target.mob)
       if found and not found.dead then
          -- Prior target is still alive — keep it
          State.set_target(found)
@@ -3044,7 +3056,6 @@ function on_cp_check_end(name, line, wildcards)
             State.clear_target()
          end
       end
-      CP._last_target = nil
    end
 end
 

@@ -204,6 +204,41 @@ run_test("CP.start", function()
    assert_true(sent_cp_info, "sent cp info command")
 end)
 
+run_test("CP.start_double_call_guard", function()
+   -- Second call to CP.start() should be no-op
+   CP._on_cp = false
+   State._activity = "none"
+   Noexp._noexp_on = false
+   State._noexp = false
+
+   CP.start()
+   assert_true(CP._on_cp, "first call activates CP")
+   mock.reset()
+
+   -- Second call — should return immediately
+   CP.start()
+   -- Should NOT have sent another "cp info"
+   assert_nil(mock.calls["SendNoEcho"], "second call is no-op")
+end)
+
+run_test("CP.check_end_empty_list_guard", function()
+   -- Empty check list should log error and return without building
+   CP._on_cp = true
+   CP._type = "area"
+   CP._level = 45
+   State._activity = "cp"
+   CP._check_list = {}  -- empty!
+   TargetList.clear()    -- ensure clean slate
+   mock.reset_db()
+   DB.init()
+   mock.reset()
+
+   on_cp_check_end(nil, nil, {})
+
+   -- Should NOT have built target list (early return)
+   assert_equal(0, TargetList.count(), "no targets built from empty check list")
+end)
+
 run_test("CP.start_noexp_already_off", function()
    -- If noexp is already off, CP.start should not send noexp command
    CP._on_cp = false
