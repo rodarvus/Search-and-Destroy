@@ -90,7 +90,7 @@ end)
 --- Test: xcp attempts CP pickup when not on CP
 -- Setup: CP._on_cp = false (plugin loaded mid-campaign)
 -- Input: cmd_xcp with any argument
--- Expected: CP.do_info() called (sends "cp info", enables grp_cp_info), no target set (async)
+-- Expected: CP.do_info() called (sends "cp info", enables level+start triggers), no target set (async)
 -- Covers: cmd_xcp() CP pickup path → CP.do_info()
 run_test("cmd_xcp.not_on_cp", function()
    -- Not on CP — should attempt pickup via CP.do_info()
@@ -101,14 +101,18 @@ run_test("cmd_xcp.not_on_cp", function()
    cmd_xcp(nil, nil, {[1] = "1"})
 
    assert_nil(State.get_target(), "no target set (pickup is async)")
-   -- Verify CP.do_info() was called: sends "cp info" and enables trigger group
+   -- Verify CP.do_info() was called: sends "cp info" and enables individual triggers
    local send_calls = mock.calls["SendNoEcho"]
    assert_not_nil(send_calls, "SendNoEcho called for cp info")
    assert_equal("cp info", send_calls[1][1], "sends cp info command")
-   local enable_calls = mock.calls["EnableTriggerGroup"]
-   assert_not_nil(enable_calls, "EnableTriggerGroup called")
-   assert_equal("grp_cp_info", enable_calls[1][1], "enables cp info trigger group")
-   assert_true(enable_calls[1][2], "trigger group enabled (not disabled)")
+   local level_enabled = false
+   local start_enabled = false
+   for _, call in ipairs(mock.calls["EnableTrigger"] or {}) do
+      if call[1] == "trg_cp_info_level" and call[2] == true then level_enabled = true end
+      if call[1] == "trg_cp_info_start" and call[2] == true then start_enabled = true end
+   end
+   assert_true(level_enabled, "trg_cp_info_level enabled")
+   assert_true(start_enabled, "trg_cp_info_start enabled")
 end)
 
 --- Test: xcp with invalid index shows error
@@ -450,8 +454,11 @@ end)
 -- CP.do_info / CP.do_check direct tests
 ------------------------------------------------------------------------
 
---- Test: CP.do_info clears list, enables trigger group, sends "cp info"
--- Covers: CP.do_info()
+--- Test: CP.do_info clears list, enables level+start triggers only, sends "cp info"
+-- Setup: CP._info_list has stale data
+-- Expected: list cleared, only trg_cp_info_level + trg_cp_info_start enabled (NOT line/end),
+--   "cp info" sent, safety timer enabled
+-- Covers: CP.do_info() individual trigger enabling (prevents premature end trigger)
 run_test("CP.do_info.enables_triggers_and_sends", function()
    CP._info_list = {{mob = "old"}}
    mock.reset()
@@ -466,12 +473,47 @@ run_test("CP.do_info.enables_triggers_and_sends", function()
       if call[1] == "cp info" then sent = true end
    end
    assert_true(sent, "cp info command sent")
-   -- Should enable trigger group
-   local enabled = false
-   for _, call in ipairs(mock.calls["EnableTriggerGroup"] or {}) do
-      if call[1] == "grp_cp_info" and call[2] == true then enabled = true end
+   -- Should enable only level and start triggers (not the whole group)
+   local level_enabled = false
+   local start_enabled = false
+   local line_enabled = false
+   local end_enabled = false
+   for _, call in ipairs(mock.calls["EnableTrigger"] or {}) do
+      if call[1] == "trg_cp_info_level" and call[2] == true then level_enabled = true end
+      if call[1] == "trg_cp_info_start" and call[2] == true then start_enabled = true end
+      if call[1] == "trg_cp_info_line" and call[2] == true then line_enabled = true end
+      if call[1] == "trg_cp_info_end" and call[2] == true then end_enabled = true end
    end
-   assert_true(enabled, "grp_cp_info enabled")
+   assert_true(level_enabled, "trg_cp_info_level enabled")
+   assert_true(start_enabled, "trg_cp_info_start enabled")
+   assert_false(line_enabled, "trg_cp_info_line NOT enabled yet")
+   assert_false(end_enabled, "trg_cp_info_end NOT enabled yet")
+end)
+
+--- Test: on_cp_info_start enables line+end triggers and clears info list
+-- Setup: trg_cp_info_line and trg_cp_info_end not yet enabled
+-- Expected: both triggers enabled, info list cleared, start trigger disabled
+-- Covers: on_cp_info_start() trigger staging (line+end enabled after "The targets..." line)
+run_test("CP.do_info.start_enables_line_and_end", function()
+   CP._info_list = {{mob = "stale"}}
+   mock.reset()
+
+   on_cp_info_start(nil, nil, {})
+
+   -- Should clear info list
+   assert_equal(0, #CP._info_list, "info list cleared by start")
+   -- Should enable line+end triggers
+   local line_enabled = false
+   local end_enabled = false
+   local start_disabled = false
+   for _, call in ipairs(mock.calls["EnableTrigger"] or {}) do
+      if call[1] == "trg_cp_info_line" and call[2] == true then line_enabled = true end
+      if call[1] == "trg_cp_info_end" and call[2] == true then end_enabled = true end
+      if call[1] == "trg_cp_info_start" and call[2] == false then start_disabled = true end
+   end
+   assert_true(line_enabled, "trg_cp_info_line enabled by start")
+   assert_true(end_enabled, "trg_cp_info_end enabled by start")
+   assert_true(start_disabled, "trg_cp_info_start disabled after matching")
 end)
 
 --- Test: CP.do_check blocked by 1.0s cooldown
@@ -488,9 +530,10 @@ run_test("CP.do_check.cooldown_guard", function()
    assert_nil(mock.calls["SendNoEcho"], "blocked by cooldown")
 end)
 
---- Test: CP.do_check sends "cp check" when cooldown expired
+--- Test: CP.do_check sends "cp check", enables only check_line trigger (not end)
 -- Setup: _last_check_time 2 seconds ago
--- Covers: CP.do_check() normal send path
+-- Expected: sends "cp check", enables trg_cp_check_line only (end enabled by first line match)
+-- Covers: CP.do_check() normal send path + individual trigger enabling
 run_test("CP.do_check.sends_when_ready", function()
    CP._last_check_time = os.clock() - 2.0  -- 2 seconds ago, past cooldown
    mock.reset()
@@ -502,4 +545,13 @@ run_test("CP.do_check.sends_when_ready", function()
       if call[1] == "cp check" then sent = true end
    end
    assert_true(sent, "cp check sent when cooldown expired")
+   -- Should enable only check_line (not check_end — enabled by first line match)
+   local line_enabled = false
+   local end_enabled = false
+   for _, call in ipairs(mock.calls["EnableTrigger"] or {}) do
+      if call[1] == "trg_cp_check_line" and call[2] == true then line_enabled = true end
+      if call[1] == "trg_cp_check_end" and call[2] == true then end_enabled = true end
+   end
+   assert_true(line_enabled, "trg_cp_check_line enabled")
+   assert_false(end_enabled, "trg_cp_check_end NOT enabled yet")
 end)

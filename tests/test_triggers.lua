@@ -72,6 +72,10 @@ run_test("trg_cp_info_line", function()
    assert_nil(pcre_find(pat, "You still have to kill * a goblin (Test)"), "check line doesn't match info pattern")
 end)
 
+--- Test: trg_cp_info_end negative lookahead (no $ anchor — protection via trigger enabling)
+-- Expected: matches non-info lines, does NOT match info lines
+-- Covers: trg_cp_info_end pattern. Premature firing prevented by enabling
+--   trg_cp_info_end only after trg_cp_info_start fires (not at group enable time).
 run_test("trg_cp_info_end", function()
    -- Negative lookahead: matches lines that are NOT cp info lines
    local pat = [[^(?!Find and kill 1 \* .+ \(.+\))]]
@@ -105,6 +109,10 @@ run_test("trg_cp_check_line", function()
    assert_nil(pcre_find(pat, "Find and kill 1 * a goblin (Test)"), "info line doesn't match check")
 end)
 
+--- Test: trg_cp_check_end negative lookahead (no $ anchor — protection via trigger enabling)
+-- Expected: matches non-check lines, does NOT match check lines
+-- Covers: trg_cp_check_end pattern. Premature firing prevented by enabling
+--   trg_cp_check_end only after first trg_cp_check_line fires (not at group enable time).
 run_test("trg_cp_check_end", function()
    local pat = [[^(?!You still have to kill \* .+ \(.+?(?: - Dead)?\))]]
    -- Should match non-check lines

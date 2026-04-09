@@ -126,13 +126,16 @@ run_test("TargetList.resolve_area_key_nil", function()
    assert_nil(TargetList.resolve_area_key(""), "empty location returns nil")
 end)
 
---- Test: resolve_area_key returns correct key for known area
+--- Test: resolve_area_key returns correct key for known area using XREF only
 -- Input: "The Three Pillars of Diatz"
--- Expected: "diatz"
--- Covers: TargetList.resolve_area_key() CONST fallback
+-- Expected: "diatz", no mapper query made (XREF lookup only)
+-- Covers: TargetList.resolve_area_key() AREA_NAME_XREF lookup
 run_test("TargetList.resolve_area_key_known", function()
+   mock.reset()
    local key = TargetList.resolve_area_key("The Three Pillars of Diatz")
    assert_equal("diatz", key, "resolves known area from AREA_NAME_XREF")
+   -- Should NOT call mapper (no CallPlugin / map_query)
+   assert_nil(mock.calls["CallPlugin"], "no mapper query for XREF-resolvable area")
 end)
 
 --- Test: Unknown location produces target with link_type "unknown"

@@ -142,9 +142,9 @@ run_test("workflow.cp_check_builds_target_list", function()
    assert_equal("a dangerous scorpion", last.mob, "dead target is scorpion")
 end)
 
---- Test: xcp 1 selects first target, resolves area key, navigates
--- Expected: target set with mob/area_key/keyword, mapper goto called
--- Covers: cmd_xcp() → State.set_target() + Nav.goto_area()
+--- Test: xcp 1 selects first target, resolves area key, navigates, sets arrival callback
+-- Expected: target set with mob/area_key/keyword, mapper goto called, Nav._on_arrive set
+-- Covers: cmd_xcp() → State.set_target() + Nav.goto_area() + _on_arrive callback
 run_test("workflow.xcp_selects_and_navigates", function()
    -- Set up: CP active with targets
    CP._on_cp = true
@@ -176,6 +176,10 @@ run_test("workflow.xcp_selects_and_navigates", function()
       end
    end
    assert_true(navigated, "navigation initiated to target area")
+
+   -- Arrival callback should be set for post-navigation action
+   assert_not_nil(Nav._on_arrive, "arrival callback set for area target")
+   assert_equal("function", type(Nav._on_arrive), "arrival callback is a function")
 end)
 
 --- Test: xcp 2 selects second target specifically

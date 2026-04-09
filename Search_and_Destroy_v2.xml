@@ -2240,16 +2240,25 @@ function CP.start()
    CP.do_info()
 end
 
---- Send "cp info" and enable parsing triggers
+--- Send "cp info" and enable level+start triggers (line+end deferred to on_cp_info_start)
+-- Side effects: clears _info_list, enables trg_cp_info_level + trg_cp_info_start only,
+--   starts safety timer, sends "cp info"
+-- Tested by: CP.do_info.enables_triggers_and_sends, workflow.xcp_picks_up_existing_cp
 function CP.do_info()
    CP._info_list = {}
-   EnableTriggerGroup("grp_cp_info", true)
+   -- Only enable level + start triggers; line + end enabled by on_cp_info_start
+   -- (prevents end trigger from firing on header lines before targets appear)
+   EnableTrigger("trg_cp_info_level", true)
+   EnableTrigger("trg_cp_info_start", true)
    EnableTimer("tim_parse_safety", true)
    ResetTimer("tim_parse_safety")
    SendNoEcho("cp info")
 end
 
---- Send "cp check" and enable parsing triggers (with cooldown guard)
+--- Send "cp check" and enable check_line trigger (check_end deferred to first line match)
+-- Side effects: clears _check_list, enables trg_cp_check_line only,
+--   starts safety timer, sends "cp check"
+-- Tested by: CP.do_check.sends_when_ready, CP.do_check.cooldown_guard
 function CP.do_check()
    local now = os.clock()
    if (now - CP._last_check_time) < 1.0 then
@@ -2258,7 +2267,9 @@ function CP.do_check()
    end
    CP._last_check_time = now
    CP._check_list = {}
-   EnableTriggerGroup("grp_cp_check", true)
+   -- Only enable check_line; check_end enabled by first on_cp_check_line
+   -- (prevents end trigger from firing on pre-check output)
+   EnableTrigger("trg_cp_check_line", true)
    EnableTimer("tim_parse_safety", true)
    ResetTimer("tim_parse_safety")
    SendNoEcho("cp check")
@@ -2339,18 +2350,14 @@ end
 -- @param location area long name (e.g., "The Three Pillars of Diatz")
 -- @return area key string (e.g., "diatz") or nil if unknown
 -- Tested by: TargetList.resolve_area_key_nil, _known, TargetList.build_area_resolves_area_key
+--- Resolve area long name to area key via AREA_NAME_XREF lookup
+-- @param location area long name (e.g. "The Three Pillars of Diatz")
+-- @return area key string (e.g. "diatz") or nil if unknown
+-- Note: Does NOT query mapper DB (map_find_query is a display function, not a data API).
+--   XREF covers ~260 standard Aardwolf areas. Add missing areas to CONST.AREA_NAME_XREF.
+-- Tested by: TargetList.resolve_area_key_nil, TargetList.resolve_area_key_known
 function TargetList.resolve_area_key(location)
    if not location or location == "" then return nil end
-   -- Try mapper DB: query areas table for exact name match
-   local ret, result = Util.map_query(
-      string.format("SELECT uid FROM areas WHERE name = %s", Util.fixsql(location))
-   )
-   if ret == 0 and result and result ~= "" then
-      -- Parse mapper result (returns area uid)
-      local uid = result:match("^(%S+)")
-      if uid then return uid end
-   end
-   -- Fallback to static cross-reference
    return CONST.AREA_NAME_XREF[location]
 end
 
@@ -3051,11 +3058,12 @@ end
 --- Select CP target by index, display list, or attempt mid-campaign pickup
 -- @param wildcards[1] optional index N or empty string
 -- Side effects: if not on CP, calls CP.do_info() to attempt pickup (async);
---   if on CP, sets State target and triggers Nav navigation
+--   if on CP, sets State target, sets Nav._on_arrive callback (based on xcp_action_mode),
+--   and triggers Nav navigation
 -- Tested by: cmd_xcp.not_on_cp, cmd_xcp.no_arg_displays_list,
 --   cmd_xcp.numeric_selects_target, cmd_xcp.index_out_of_bounds,
 --   cmd_xcp.numeric_skips_dead, cmd_xcp.unknown_rejected,
---   workflow.xcp_picks_up_existing_cp
+--   workflow.xcp_selects_and_navigates, workflow.xcp_picks_up_existing_cp
 function cmd_xcp(name, line, wildcards)
    local args = Util.trim(wildcards[1] or "")
 
@@ -3091,6 +3099,17 @@ function cmd_xcp(name, line, wildcards)
          return
       end
       State.set_target(t)
+
+      -- Set arrival callback based on xcp_action_mode (Crowley's execute_in_area pattern)
+      local action = Config.get("xcp_action_mode")
+      if action ~= "off" then
+         Nav._on_arrive = function()
+            -- TODO Phase 3: replace with actual hunt trick / quick where
+            local mode_desc = (action == "ht") and "hunt trick" or "quick where"
+            Util.info("Arrived in ", t.area_key, " — use ", mode_desc, " to find ", t.mob)
+         end
+      end
+
       if t.link_type == "area" then
          Nav.goto_area(t.area_key)
       elseif t.link_type == "room" and t.roomid then
@@ -3199,8 +3218,15 @@ function on_cp_info_level(name, line, wildcards)
    Util.debug("CP level: ", tostring(CP._level))
 end
 
+--- Callback: "The targets for this campaign are:" — enable line+end triggers
+-- Side effects: clears _info_list, enables trg_cp_info_line + trg_cp_info_end,
+--   disables trg_cp_info_start (Crowley's pattern: stage triggers to prevent premature end)
+-- Tested by: CP.do_info.start_enables_line_and_end, CP.info_parse_flow
 function on_cp_info_start(name, line, wildcards)
    CP._info_list = {}
+   EnableTrigger("trg_cp_info_start", false)
+   EnableTrigger("trg_cp_info_line", true)
+   EnableTrigger("trg_cp_info_end", true)
 end
 
 function on_cp_info_line(name, line, wildcards)
@@ -3211,12 +3237,15 @@ function on_cp_info_line(name, line, wildcards)
 end
 
 --- Callback: cp info parsing complete — set CP active, detect type, chain to cp check
--- Side effects: disables grp_cp_info, sets CP._on_cp = true + activity = "cp",
---   detects area/room type, schedules CP.do_check() via 0.1s DoAfterSpecial
+-- Side effects: disables all grp_cp_info triggers individually, sets CP._on_cp = true
+--   + activity = "cp", detects area/room type, schedules CP.do_check() via 0.1s DoAfterSpecial
 -- Tested by: CP.info_parse_flow (callbacks only), CP.info_end_sets_cp_state,
 --   workflow.cp_info_to_check_chain, workflow.xcp_picks_up_existing_cp
 function on_cp_info_end(name, line, wildcards)
-   EnableTriggerGroup("grp_cp_info", false)
+   EnableTrigger("trg_cp_info_level", false)
+   EnableTrigger("trg_cp_info_start", false)
+   EnableTrigger("trg_cp_info_line", false)
+   EnableTrigger("trg_cp_info_end", false)
    EnableTimer("tim_parse_safety", false)
 
    -- Mark as on-CP (handles mid-campaign plugin load/reconnect)
@@ -3232,7 +3261,14 @@ function on_cp_info_end(name, line, wildcards)
 end
 
 -- CP CHECK triggers
+--- Callback: each "You still have to kill *" line — enable end trigger on first match
+-- Side effects: appends to CP._check_list, enables trg_cp_check_end on first line
+-- Tested by: CP.check_parse_flow
 function on_cp_check_line(name, line, wildcards)
+   -- Enable end trigger on first line match (prevents premature firing)
+   if #CP._check_list == 0 then
+      EnableTrigger("trg_cp_check_end", true)
+   end
    local dead = (wildcards[3] == "Dead") or false
    CP._check_list[#CP._check_list + 1] = {
       mob = wildcards[1],
@@ -3241,8 +3277,12 @@ function on_cp_check_line(name, line, wildcards)
    }
 end
 
+--- Callback: cp check parsing complete — build target list
+-- Side effects: disables check triggers individually, sets CP active, builds TargetList
+-- Tested by: CP.check_parse_flow, workflow.cp_check_builds_target_list
 function on_cp_check_end(name, line, wildcards)
-   EnableTriggerGroup("grp_cp_check", false)
+   EnableTrigger("trg_cp_check_line", false)
+   EnableTrigger("trg_cp_check_end", false)
    EnableTimer("tim_parse_safety", false)
 
    -- CP._on_cp and State._activity are already set by CP.start().
