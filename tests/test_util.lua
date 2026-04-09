@@ -11,6 +11,10 @@ function setUp()
    mock.reset()
 end
 
+--- Test: fixsql wraps strings for safe SQL embedding
+-- Input: string, nil, string with quotes, empty string, number
+-- Expected: single-quoted SQL strings, NULL for nil, escaped internal quotes
+-- Covers: Util.fixsql()
 run_test("Util.fixsql", function()
    assert_equal("'hello'", Util.fixsql("hello"), "fixsql wraps string in quotes")
    assert_equal("NULL", Util.fixsql(nil), "fixsql returns NULL for nil")
@@ -20,6 +24,10 @@ run_test("Util.fixsql", function()
    assert_equal("'123'", Util.fixsql(123), "fixsql converts number to string")
 end)
 
+--- Test: trim removes leading/trailing whitespace, handles nil
+-- Input: clean string, padded string, tabs, internal spaces, empty, whitespace-only, nil
+-- Expected: stripped strings, empty for nil/whitespace-only
+-- Covers: Util.trim()
 run_test("Util.trim", function()
    assert_equal("hello", Util.trim("hello"), "trim no-op on clean string")
    assert_equal("hello", Util.trim("  hello  "), "trim removes leading/trailing spaces")
@@ -30,6 +38,10 @@ run_test("Util.trim", function()
    assert_equal("", Util.trim(nil), "trim handles nil")
 end)
 
+--- Test: split tokenizes strings by whitespace or custom pattern
+-- Input: multi-word string, comma-separated, empty, single word
+-- Expected: table of tokens with correct count and values
+-- Covers: Util.split()
 run_test("Util.split", function()
    local parts = Util.split("hello world foo")
    assert_equal(3, #parts, "split by whitespace: count")
@@ -50,6 +62,10 @@ run_test("Util.split", function()
    assert_equal("single", parts[1], "split single word value")
 end)
 
+--- Test: strip_colours removes Aardwolf @-color codes from strings
+-- Input: @W, @G, @@, @x123 color codes, plain text, empty, nil
+-- Expected: plain text without color codes, @@ becomes single @
+-- Covers: Util.strip_colours()
 run_test("Util.strip_colours", function()
    assert_equal("hello", Util.strip_colours("@Whello"), "strip simple color code")
    assert_equal("hello world", Util.strip_colours("@Whello @Gworld"), "strip multiple colors")
@@ -60,6 +76,10 @@ run_test("Util.strip_colours", function()
    assert_equal("", Util.strip_colours(nil), "strip nil")
 end)
 
+--- Test: ellipsify truncates strings with "..." when exceeding max length
+-- Input: short string, exact length, over-length, empty, nil
+-- Expected: unchanged if fits, truncated with "..." appended if too long
+-- Covers: Util.ellipsify()
 run_test("Util.ellipsify", function()
    assert_equal("hello", Util.ellipsify("hello", 10), "ellipsify short string unchanged")
    assert_equal("hello", Util.ellipsify("hello", 5), "ellipsify exact length unchanged")
@@ -70,6 +90,10 @@ run_test("Util.ellipsify", function()
    assert_equal("hello world this is a...", Util.ellipsify("hello world this is a long string", 24), "ellipsify longer string")
 end)
 
+--- Test: banker's rounding (round half to even)
+-- Input: 0, 1.5, 2.5, 3.5 (tie cases), 0.7, 0.3 (non-tie)
+-- Expected: ties round to even (1.5→2, 2.5→2, 3.5→4), non-ties round normally
+-- Covers: Util.round()
 run_test("Util.round", function()
    assert_equal(0, Util.round(0), "round 0")
    assert_equal(2, Util.round(1.5), "round 1.5 to even")

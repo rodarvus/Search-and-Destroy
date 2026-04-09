@@ -13,6 +13,10 @@ function setUp()
    Config._dirty = false
 end
 
+--- Test: Config._defaults contains expected default values for all settings
+-- Input: none (reads Config._defaults table directly)
+-- Expected: xcp_action_mode="qw", quick_kill_command="k", noexp_auto="on", etc.
+-- Covers: Config._defaults
 run_test("Config.defaults", function()
    assert_not_nil(Config._defaults.xcp_action_mode, "xcp_action_mode has default")
    assert_equal("qw", Config._defaults.xcp_action_mode, "xcp_action_mode default is qw")
@@ -22,12 +26,20 @@ run_test("Config.defaults", function()
    assert_equal("off", Config._defaults.debug_mode, "debug_mode default is off")
 end)
 
+--- Test: Config.load uses defaults when no stored variables exist
+-- Setup: mock.variables empty
+-- Expected: Config.get returns defaults for all keys
+-- Covers: Config.load(), Config.get()
 run_test("Config.load", function()
    Config.load()
    assert_equal("qw", Config.get("xcp_action_mode"), "load uses default for missing variable")
    assert_equal("off", Config.get("debug_mode"), "load uses default for debug_mode")
 end)
 
+--- Test: Config.load reads stored MUSHclient variables over defaults
+-- Setup: mock.variables has snd_xcp_action_mode="ht", snd_debug_mode="on"
+-- Expected: Config.get returns stored values, not defaults
+-- Covers: Config.load(), Config.get()
 run_test("Config.load_with_stored", function()
    mock.variables["snd_xcp_action_mode"] = "ht"
    mock.variables["snd_debug_mode"] = "on"
@@ -36,6 +48,11 @@ run_test("Config.load_with_stored", function()
    assert_equal("on", Config.get("debug_mode"), "load uses stored debug_mode")
 end)
 
+--- Test: Config.set updates value and marks dirty for valid keys
+-- Setup: Config loaded with defaults
+-- Input: Config.set("debug_mode", "on")
+-- Expected: returns true, value updated, dirty flag set
+-- Covers: Config.set()
 run_test("Config.set", function()
    Config.load()
    local ok = Config.set("debug_mode", "on")
@@ -44,6 +61,11 @@ run_test("Config.set", function()
    assert_true(Config._dirty, "set marks config as dirty")
 end)
 
+--- Test: Config.set rejects unknown keys without modifying state
+-- Setup: Config loaded with defaults
+-- Input: Config.set("nonexistent_key", "value")
+-- Expected: returns false, dirty flag NOT set
+-- Covers: Config.set() validation
 run_test("Config.set_invalid", function()
    Config.load()
    local ok = Config.set("nonexistent_key", "value")
@@ -51,11 +73,18 @@ run_test("Config.set_invalid", function()
    assert_false(Config._dirty, "set doesn't dirty on invalid key")
 end)
 
+--- Test: Config.get falls back to _defaults when key not in _settings
+-- Setup: _settings is empty (no load called)
+-- Expected: returns default value for known key
+-- Covers: Config.get() fallback logic
 run_test("Config.get_default_fallback", function()
-   -- _settings empty, get should fall back to default
    assert_equal("qw", Config.get("xcp_action_mode"), "get falls back to default")
 end)
 
+--- Test: Config.save writes settings to MUSHclient variables and clears dirty
+-- Setup: _settings populated, _dirty=true
+-- Expected: mock.variables has snd_ prefixed values, dirty cleared
+-- Covers: Config.save()
 run_test("Config.save", function()
    Config._settings = {xcp_action_mode = "ht", debug_mode = "on"}
    Config._dirty = true
@@ -65,18 +94,25 @@ run_test("Config.save", function()
    assert_false(Config._dirty, "save clears dirty flag")
 end)
 
+--- Test: Config.save is a no-op when not dirty
+-- Setup: _dirty=false
+-- Expected: SetVariable never called
+-- Covers: Config.save() dirty guard
 run_test("Config.save_not_dirty", function()
    Config._dirty = false
    Config.save()
    assert_nil(mock.calls["SetVariable"], "save doesn't call SetVariable when not dirty")
 end)
 
+--- Test: Config set → save → reload preserves values
+-- Setup: load defaults, set two values, save, clear settings, reload
+-- Expected: reloaded values match what was set
+-- Covers: Config.set(), Config.save(), Config.load() roundtrip
 run_test("Config.roundtrip", function()
    Config.load()
    Config.set("quick_kill_command", "kill")
    Config.set("noexp_tnl_cutoff", "500")
    Config.save()
-   -- Simulate reload
    Config._settings = {}
    Config.load()
    assert_equal("kill", Config.get("quick_kill_command"), "roundtrip preserves quick_kill_command")
