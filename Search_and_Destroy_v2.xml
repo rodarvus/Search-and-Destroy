@@ -624,7 +624,6 @@ Based on Crowley's and WinkleGold's Search and Destroy plugins.
 ------------------------------------------------------------------------
 
 json = require "json"
-sqlite3 = require "lsqlite3"
 
 ------------------------------------------------------------------------
 -- CONST: Immutable constants
@@ -3053,7 +3052,9 @@ function cmd_xcp(name, line, wildcards)
    local args = Util.trim(wildcards[1] or "")
 
    if not CP._on_cp then
-      Util.error("You are not on a campaign.")
+      -- Attempt to pick up an existing campaign (e.g. plugin loaded mid-CP)
+      Util.info("Checking for active campaign...")
+      CP.do_info()
       return
    end
    if TargetList.count() == 0 then
@@ -3204,6 +3205,10 @@ end
 function on_cp_info_end(name, line, wildcards)
    EnableTriggerGroup("grp_cp_info", false)
    EnableTimer("tim_parse_safety", false)
+
+   -- Mark as on-CP (handles mid-campaign plugin load/reconnect)
+   CP._on_cp = true
+   State.set_activity("cp")
 
    -- Detect area vs room type from info list
    CP._type = TargetList.detect_type(CP._info_list)
