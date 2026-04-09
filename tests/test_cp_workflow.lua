@@ -144,8 +144,8 @@ run_test("workflow.xcp_selects_and_navigates", function()
    TargetList.build(check_list, "area", 45)
    mock.reset()
 
-   -- Step 4: User types "xcp" (no arg) → auto-select + navigate
-   cmd_xcp(nil, nil, {[1] = ""})
+   -- Step 4: User types "xcp 1" → select first target + navigate
+   cmd_xcp(nil, nil, {[1] = "1"})
 
    -- Target should be set
    local target = State.get_target()
@@ -326,7 +326,7 @@ run_test("workflow.full_cycle_request_to_complete", function()
 
    -- 4. Select target
    mock.reset()
-   cmd_xcp(nil, nil, {[1] = ""})
+   cmd_xcp(nil, nil, {[1] = "1"})
    assert_not_nil(State.get_target(), "4: target selected")
 
    -- 5. Kill mob → refresh

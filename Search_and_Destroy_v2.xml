@@ -899,6 +899,8 @@ CONST = {
       ["autumn"]    = {roomid = 13839},
       ["avian"]     = {roomid = 4334},
       ["aylor"]     = {roomid = 32418},
+      -- New areas (from mapper DB, 2026-04-09)
+      ["chakra"]    = {roomid = 39183},
       -- B
       ["bazaar"]    = {roomid = 34454},
       ["beer"]      = {roomid = 20062},
@@ -917,6 +919,7 @@ CONST = {
       ["cataclysm"]  = {roomid = 19976},
       ["cathedral"]  = {roomid = 27497},
       ["cats"]       = {roomid = 40900},
+      ["chantry"]    = {roomid = 10414},
       ["chasm"]      = {roomid = 29446},
       ["chessboard"] = {roomid = 25513},
       ["childsplay"] = {roomid = 678},
@@ -946,6 +949,7 @@ CONST = {
       ["dread"]       = {roomid = 26075},
       ["dsr"]         = {roomid = 30030},
       ["dundoom"]     = {roomid = 25661},
+      ["dunes"]       = {roomid = 42170},
       ["dunoir"]      = {roomid = 14222},
       ["duskvalley"]  = {roomid = 37301},
       ["dynasty"]     = {roomid = 30799},
@@ -968,6 +972,7 @@ CONST = {
       ["fortress"]    = {roomid = 31835},
       ["fortune"]     = {roomid = 38561},
       ["fractured"]   = {roomid = 17033},
+      ["fury"]        = {roomid = 45668},
       ["ft1"]         = {roomid = 1205},
       ["ftii"]        = {roomid = 26673},
       -- G
@@ -1020,6 +1025,7 @@ CONST = {
       ["legend"]      = {roomid = 16224},
       ["lemdagor"]    = {roomid = 1966},
       ["lidnesh"]     = {roomid = 27995},
+      ["logging"]     = {roomid = 31254},
       ["livingmine"]  = {roomid = 37008},
       ["longnight"]   = {roomid = 26367},
       ["losttime"]    = {roomid = 28584},
@@ -1087,6 +1093,7 @@ CONST = {
       ["shouggoth"]   = {roomid = 34087},
       ["siege"]       = {roomid = 43265},
       ["sirens"]      = {roomid = 16298},
+      ["skeletal"]    = {roomid = 29126},
       ["slaughter"]   = {roomid = 1601},
       ["snuckles"]    = {roomid = 182},
       ["soh"]         = {roomid = 25611},
@@ -1195,6 +1202,7 @@ CONST = {
       ["Andolor's Ocean Adventure Park"] = "oceanpark",
       ["Annwn"] = "annwn",
       ["Anthrox"] = "anthrox",
+      ["Arboria"] = "arboria",
       ["Arboretum"] = "arboretum",
       ["Arisian Realm"] = "arisian",
       ["Art of Melody"] = "melody",
@@ -1208,7 +1216,9 @@ CONST = {
       ["Bloodlust Dungeon"] = "dungeon",
       ["Brightsea and Glimmerdim"] = "glimmerdim",
       ["Canyon Memorial Hospital"] = "canyon",
+      ["Castle Reinhold"] = "reinhold",
       ["Castle Vlad-Shamir"] = "vlad",
+      ["Chakra Spire"] = "chakra",
       ["Chaprenula's Laboratory"] = "lab",
       ["Child's Play"] = "childsplay",
       ["Christmas Vacation"] = "xmas",
@@ -1225,6 +1235,8 @@ CONST = {
       ["Dhal'Gora Outlands"] = "dhalgora",
       ["Diamond Soul Revelation"] = "dsr",
       ["Dortmund"] = "dortmund",
+      ["Dune: The Desert Planet"] = "dune",
+      ["Dunes in Gold"] = "dunes",
       ["Dread Tower"] = "dread",
       ["Dusk Valley"] = "duskvalley",
       ["Earth Plane 4"] = "earthplane",
@@ -1235,6 +1247,8 @@ CONST = {
       ["Faerie Tales"] = "ft1",
       ["Faerie Tales II"] = "ftii",
       ["Fantasy Fields"] = "fantasy",
+      ["Fellchantry"] = "chantry",
+      ["Fury City"] = "fury",
       ["Foolish Promises"] = "promises",
       ["Fort Terramire"] = "terramire",
       ["Gallows Hill"] = "gallows",
@@ -1273,6 +1287,7 @@ CONST = {
       ["Living Mines of Dak'Tai"] = "livingmine",
       ["Masquerade Island"] = "masq",
       ["Mount duNoir"] = "dunoir",
+      ["Mossflower Wood"] = "mossflower",
       ["Mudwog's Swamp"] = "mudwog",
       ["Nanjiki Ruins"] = "nanjiki",
       ["Nebulous Horizon"] = "horizon",
@@ -1286,6 +1301,7 @@ CONST = {
       ["Ookushka Garrison"] = "ooku",
       ["Paradise Lost"] = "paradise",
       ["Plains of Nulan'Boar"] = "nulan",
+      ["Ranger Heaven"] = "rangers",
       ["Pompeii"] = "pompeii",
       ["Prosper's Island"] = "prosper",
       ["Qong"] = "qong",
@@ -1305,6 +1321,9 @@ CONST = {
       ["Sheila's Cat Sanctuary"] = "cats",
       ["Sho'aram, Castle in the Sand"] = "sandcastle",
       ["Siren's Oasis Resort"] = "sirens",
+      ["Skeletal Remains"] = "skeletal",
+      ["Stonekeep"] = "stonekeep",
+      ["Svrogan's Logging Camp"] = "logging",
       ["Snuckles Village"] = "snuckles",
       ["Storm Mountain"] = "storm",
       ["Storm Ships of Lem-Dagor"] = "lemdagor",
@@ -1344,6 +1363,7 @@ CONST = {
       ["The Desert Prison"] = "desert",
       ["The Drageran Empire"] = "drageran",
       ["The Dungeon of Doom"] = "dundoom",
+      ["The Dwarven Kingdom"] = "dwarven",
       ["The Earth Lords"] = "earthlords",
       ["The Eighteenth Dynasty"] = "dynasty",
       ["The Empire of Aiighialla"] = "empire",
@@ -1353,6 +1373,7 @@ CONST = {
       ["The First Ascent"] = "ascent",
       ["The Flying Citadel"] = "citadel",
       ["The Forest of Li'Dnesh"] = "lidnesh",
+      ["The Fortress of Angband"] = "angband",
       ["The Fractured Lands"] = "fractured",
       ["The Gathering Horde"] = "gathering",
       ["The Gauntlet"] = "gauntlet",
@@ -1366,6 +1387,7 @@ CONST = {
       ["The Icy Caldera of Mauldoon"] = "caldera",
       ["The Imperial City of Reme"] = "reme",
       ["The Infestation"] = "infest",
+      ["The Island of Stardock"] = "stardock",
       ["The Keep of Kearvek"] = "kearvek",
       ["The Keep of the Asherodan"] = "asherodan",
       ["The Killing Fields"] = "fields",
@@ -1375,18 +1397,22 @@ CONST = {
       ["The Lower Planes"] = "lplanes",
       ["The Maelstrom"] = "maelstrom",
       ["The Marshlands of Agroth"] = "agroth",
+      ["The Mirror Realm"] = "mirror",
       ["The Misty Shores of Yarr"] = "yarr",
       ["The Monastery"] = "monastery",
       ["The Mountains of Desolation"] = "desolation",
       ["The Nine Hells"] = "ninehells",
       ["The Nyne Woods"] = "nynewoods",
       ["The Old Cathedral"] = "cathedral",
+      ["The Onslaught of Chaos"] = "onslaught",
       ["The Palace of Song"] = "songpalace",
       ["The Partroxis"] = "partroxis",
+      ["The Port"] = "port",
       ["The Path of the Believer"] = "believer",
       ["The Realm of Infamy"] = "infamy",
       ["The Realm of the Hawklords"] = "hawklord",
       ["The Relinquished Tombs"] = "tombs",
+      ["The River of Despair"] = "despair",
       ["The Reman Conspiracy"] = "remcon",
       ["The Ruins of Diamond Reach"] = "ruins",
       ["The Ruins of Stormhaven"] = "stormhaven",
@@ -1422,6 +1448,7 @@ CONST = {
       ["Transcendece"] = "transcend",
       ["Tribal Origins"] = "origins",
       ["Tumari's Diner"] = "diner",
+      ["Ultima"] = "ultima",
       ["Umari's Castle"] = "umari",
       ["Unearthly Bonds"] = "bonds",
       ["Verdure Estate"] = "verdure",
@@ -2092,6 +2119,7 @@ function CP.start()
    CP._on_cp = true
    CP._can_get_new = false
    CP._level = State._level
+   SetVariable("snd_cp_level", tostring(CP._level))
    State.set_activity("cp")
 
    -- Turn noexp off — player needs XP for CP mobs
@@ -2131,6 +2159,7 @@ end
 function CP.clear()
    CP._on_cp = false
    CP._level = 0
+   SetVariable("snd_cp_level", "0")
    CP._type = "area"
    CP._can_get_new = false
    CP._info_list = {}
@@ -2323,6 +2352,41 @@ function TargetList.update_dead(mob_name)
          return
       end
    end
+end
+
+--- Display the target list to the user (adapted from Crowley's print_target_links)
+function TargetList.display()
+   if #TargetList._main_list == 0 then
+      Util.info("No targets to show.")
+      return
+   end
+   local current_target = State.get_target()
+   ColourNote("#808080", "", string.rep("-", 80))
+   for i, t in ipairs(TargetList._main_list) do
+      local prefix = "  "
+      if current_target and current_target.mob == t.mob then
+         prefix = "> "
+      end
+      local dead_tag = t.dead and "[D] " or ""
+      local mob_text = Util.ellipsify(dead_tag .. t.mob, 32)
+      local area = t.area_key and t.area_key:sub(1, 10) or "unknown"
+      local kw_text = t.keyword and ("  [" .. t.keyword .. "]") or ""
+      -- Color: dead=gray, current=green, alive=white
+      local color
+      if t.dead then
+         color = "#808080"
+      elseif current_target and current_target.mob == t.mob then
+         color = "#00FF00"
+      elseif t.link_type == "unknown" then
+         color = "#FF6600"
+      else
+         color = "#E0E0E0"
+      end
+      local line = string.format("%s%2d  %-32s - %-10s%s", prefix, i, mob_text, area, kw_text)
+      ColourNote(color, "", line)
+   end
+   ColourNote("#808080", "", string.rep("-", 80))
+   ColourNote("#808080", "", "Type 'xcp <N>' to select a target.")
 end
 
 --- Clear the target list
@@ -2646,6 +2710,12 @@ function on_init_timer()
    DB.init()
    Noexp.init()
 
+   -- Restore persisted CP level (for reconnect recovery)
+   local saved_cp_level = GetVariable("snd_cp_level")
+   if saved_cp_level then
+      CP._level = tonumber(saved_cp_level) or 0
+   end
+
    -- Request tags for scan
    SendNoEcho("tags scan on")
    SendNoEcho("tags roomchars on")
@@ -2851,16 +2921,9 @@ function cmd_xcp(name, line, wildcards)
    end
 
    if args == "" then
-      -- Auto-select first alive target with known location
-      local alive = TargetList.get_alive()
-      for _, t in ipairs(alive) do
-         if (t.link_type == "area" or t.link_type == "room") and t.area_key then
-            State.set_target(t)
-            Nav.goto_area(t.area_key)
-            return
-         end
-      end
-      Util.error("No reachable alive targets.")
+      -- Display target list (WinkleGold behavior)
+      TargetList.display()
+      return
    else
       -- Numeric index selection
       local index = tonumber(args)

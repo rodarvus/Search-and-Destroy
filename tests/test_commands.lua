@@ -58,24 +58,18 @@ end
 -- cmd_xcp: target selection
 ------------------------------------------------------------------------
 
-run_test("cmd_xcp.no_arg_auto_selects", function()
+run_test("cmd_xcp.no_arg_displays_list", function()
    build_test_targets()
    mock.reset()
 
    cmd_xcp(nil, nil, {[1] = ""})
 
-   -- Should auto-select first alive target and navigate
-   local target = State.get_target()
-   assert_not_nil(target, "target auto-selected")
-   assert_equal("a sinister vandal", target.mob, "first alive target selected")
-   -- Should have sent mapper goto for diatz start room
-   local found_goto = false
-   for _, call in ipairs(mock.calls["Execute"] or {}) do
-      if type(call[1]) == "string" and call[1]:match("^mapper goto") then
-         found_goto = true
-      end
-   end
-   assert_true(found_goto, "navigation initiated")
+   -- Should display list (ColourNote calls), NOT auto-navigate
+   assert_not_nil(mock.calls["ColourNote"], "ColourNote called for list display")
+   -- Should NOT have navigated
+   assert_nil(mock.calls["Execute"], "no navigation on xcp with no arg")
+   -- Target should NOT have been set
+   assert_nil(State.get_target(), "no target set on list display")
 end)
 
 run_test("cmd_xcp.numeric_selects_target", function()
@@ -109,8 +103,8 @@ run_test("cmd_xcp.index_out_of_bounds", function()
    assert_nil(State.get_target(), "no target for out-of-bounds index")
 end)
 
-run_test("cmd_xcp.skips_dead_on_auto", function()
-   -- Build list where first target is dead
+run_test("cmd_xcp.numeric_skips_dead", function()
+   -- Selecting a dead target by index should still work (user's choice)
    CP._on_cp = true
    CP._type = "area"
    State._activity = "cp"
@@ -121,11 +115,12 @@ run_test("cmd_xcp.skips_dead_on_auto", function()
    TargetList.build(check_list, "area", 45)
    mock.reset()
 
-   cmd_xcp(nil, nil, {[1] = ""})
+   -- Select the alive target (index 1 because alive sorts first)
+   cmd_xcp(nil, nil, {[1] = "1"})
 
    local target = State.get_target()
-   assert_not_nil(target, "target auto-selected")
-   assert_equal("alive mob", target.mob, "skipped dead, selected alive")
+   assert_not_nil(target, "target selected by index")
+   assert_equal("alive mob", target.mob, "alive target at index 1")
 end)
 
 run_test("cmd_xcp.unknown_rejected", function()
