@@ -2707,6 +2707,42 @@ function cmd_xset(name, line, wildcards)
       Note("")
       return
    end
+   -- Special: xset kw <keyword> — override keyword for current target
+   local kw_arg = args:match("^kw%s+(.+)$")
+   if kw_arg then
+      local target = State.get_target()
+      if not target then
+         Util.error("No target set. Use xcp to select a target first.")
+         return
+      end
+      local keyword = Util.trim(kw_arg)
+      -- Update current target
+      target.keyword = keyword
+      -- Update target list entry
+      local list_entry = TargetList.find_by_mob(target.mob)
+      if list_entry then
+         list_entry.keyword = keyword
+      end
+      -- Save to DB mob_overrides for future use
+      if target.area_key then
+         DB.execute(string.format(
+            "INSERT OR REPLACE INTO mob_overrides (mob_name, area_id, keyword) VALUES (%s, %s, %s);",
+            Util.fixsql(target.mob), Util.fixsql(target.area_key), Util.fixsql(keyword)
+         ))
+      end
+      Util.info("Keyword for '", target.mob, "' set to '", keyword, "'")
+      return
+   end
+   if args == "kw" then
+      local target = State.get_target()
+      if target then
+         Util.info("Current keyword: '", target.keyword, "' for '", target.mob, "'")
+      else
+         Util.error("No target set.")
+      end
+      return
+   end
+
    -- Parse "key value" or "key"
    local key, value = args:match("^(%S+)%s+(.+)$")
    if not key then
@@ -2800,15 +2836,101 @@ function cmd_xtest(name, line, wildcards)
 end
 
 function cmd_xcp(name, line, wildcards)
-   Util.info("xcp: Not yet implemented (Phase 2)")
+   local args = Util.trim(wildcards[1] or "")
+
+   if not CP._on_cp then
+      Util.error("You are not on a campaign.")
+      return
+   end
+   if TargetList.count() == 0 then
+      Util.error("Campaign active but target list is empty.")
+      return
+   end
+
+   if args == "" then
+      -- Auto-select first alive target with known location
+      local alive = TargetList.get_alive()
+      for _, t in ipairs(alive) do
+         if t.link_type == "area" or t.link_type == "room" then
+            State.set_target(t)
+            Nav.goto_area(t.area_key)
+            return
+         end
+      end
+      Util.error("No reachable alive targets.")
+   else
+      -- Numeric index selection
+      local index = tonumber(args)
+      if not index then
+         Util.error("Usage: xcp [N] — select target by index")
+         return
+      end
+      if index < 1 or index > TargetList.count() then
+         Util.error("Invalid index: ", tostring(index), " (1-", tostring(TargetList.count()), ")")
+         return
+      end
+      local t = TargetList.get(index)
+      if t.link_type == "unknown" then
+         Util.error("Target #", tostring(index), " has no mapper data.")
+         return
+      end
+      State.set_target(t)
+      if t.link_type == "area" then
+         Nav.goto_area(t.area_key)
+      elseif t.link_type == "room" and t.roomid then
+         Nav.goto_room(t.roomid)
+      elseif t.area_key then
+         Nav.goto_area(t.area_key)
+      end
+   end
 end
 
 function cmd_go(name, line, wildcards)
-   Util.info("go: Not yet implemented (Phase 2)")
+   local args = Util.trim(wildcards[1] or "")
+   local index = tonumber(args)
+   if not index or index < 1 then index = 1 end
+
+   if #Nav._goto_list == 0 then
+      Util.error("No room list. Use xcp to select a target first.")
+      return
+   end
+
+   local entry = Nav._goto_list[index]
+   if not entry then
+      Util.error("No room at index ", tostring(index))
+      return
+   end
+
+   Nav._goto_index = index
+   if type(entry) == "string" then
+      -- Area ID — navigate to area start room
+      Nav.goto_area(entry)
+   else
+      -- Room ID — direct navigation
+      Nav.goto_room(entry)
+   end
 end
 
 function cmd_nx(name, line, wildcards)
-   Util.info("nx: Not yet implemented (Phase 2)")
+   if #Nav._goto_list == 0 then
+      Util.error("No room list. Use xcp to select a target first.")
+      return
+   end
+
+   -- Only advance if we're at the current indexed room
+   local current = Nav._goto_list[Nav._goto_index]
+   if current and State._room and tonumber(current) == State._room.rmid then
+      Nav._goto_index = Nav._goto_index + 1
+   end
+
+   local next_entry = Nav._goto_list[Nav._goto_index]
+   if not next_entry then
+      Util.info("No more rooms in list.")
+      return
+   end
+
+   Nav._dest_room = next_entry
+   Nav.mapper_goto(next_entry)
 end
 
 function cmd_ht(name, line, wildcards)
@@ -2828,7 +2950,17 @@ function cmd_ah(name, line, wildcards)
 end
 
 function cmd_xrt(name, line, wildcards)
-   Util.info("xrt: Not yet implemented (Phase 2)")
+   local args = Util.trim(wildcards[1] or "")
+   if args == "" then
+      Util.error("Usage: xrt <area> — speedwalk to area start room")
+      return
+   end
+   local area_key = Nav.fuzzy_match_area(args)
+   if not area_key then
+      Util.error("Unknown area: ", args)
+      return
+   end
+   Nav.goto_area(area_key)
 end
 
 function cmd_kk(name, line, wildcards)
