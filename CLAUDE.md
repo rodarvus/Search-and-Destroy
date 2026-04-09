@@ -29,7 +29,7 @@ When the user reports a bug, requests a feature, or describes unexpected behavio
 4. **No Vibe-Coding** — Do not make non-obvious decisions without consulting the user. Present options, not assumptions.
 5. **Validate Against Live DBs** — Use Aardwolf.db, SnDdb.db, WinkleGold_Database.db to verify design assumptions.
 6. **Reuse Reference Code** — Adapt battle-tested code from Crowley/WinkleGold instead of reinventing.
-7. **Doc Headers** — All tests and functions must have documentation headers. Keep them current.
+7. **Doc Headers** — All tests and functions must have documentation headers. **Stale headers are worse than no headers.** Every code change must include header updates for all affected functions and tests — this is not a separate step, it is part of the change itself.
 
 ### Test Headers Format
 

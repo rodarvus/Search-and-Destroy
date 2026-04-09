@@ -425,3 +425,55 @@ run_test("workflow.xset_kw_persists_across_refresh", function()
    assert_not_nil(target, "target re-matched after refresh")
    assert_equal("customkw", target.keyword, "keyword persisted via DB override")
 end)
+
+--- Test: xcp picks up existing campaign when plugin loaded mid-CP
+-- Setup: CP._on_cp = false, no targets (plugin just loaded)
+-- Input: cmd_xcp("") triggers pickup, then simulate full info→check pipeline
+-- Expected: CP detected, targets built, CP._on_cp = true
+-- Covers: cmd_xcp() pickup path → CP.do_info() → on_cp_info_end() → CP.do_check() → on_cp_check_end()
+run_test("workflow.xcp_picks_up_existing_cp", function()
+   -- Plugin loaded mid-campaign: CP state is clean
+   CP._on_cp = false
+   CP._info_list = {}
+   CP._check_list = {}
+   CP._level = 0
+   CP._type = "area"
+   CP._last_check_time = 0
+   State._activity = "none"
+   TargetList.clear()
+   State.clear_target()
+   mock.reset()
+   mock.reset_db()
+   DB.init()
+
+   -- User types "xcp" — should trigger pickup attempt
+   cmd_xcp(nil, nil, {[1] = ""})
+
+   -- Verify CP.do_info() was called
+   local send_calls = mock.calls["SendNoEcho"]
+   assert_not_nil(send_calls, "SendNoEcho called")
+   assert_equal("cp info", send_calls[1][1], "sends cp info")
+
+   -- Simulate server responding with cp info output
+   on_cp_info_level(nil, nil, {[1] = "10"})
+   on_cp_info_start(nil, nil, {})
+   on_cp_info_line(nil, nil, {[1] = "an old woman", [2] = "Dortmund"})
+   on_cp_info_line(nil, nil, {[1] = "hatred", [2] = "Fantasy Fields"})
+   on_cp_info_end(nil, nil, {})
+
+   -- After info end: CP should be active
+   assert_true(CP._on_cp, "CP active after info end")
+   assert_equal("cp", State.get_activity(), "activity is cp")
+   assert_equal(10, CP._level, "level captured")
+
+   -- Simulate cp check response (chained by DoAfterSpecial)
+   CP._last_check_time = 0  -- reset cooldown for test
+   CP._check_list = {}
+   on_cp_check_line(nil, nil, {[1] = "an old woman", [2] = "Dortmund", [3] = false})
+   on_cp_check_line(nil, nil, {[1] = "hatred", [2] = "Fantasy Fields", [3] = false})
+   on_cp_check_end(nil, nil, {})
+
+   -- Target list should be built
+   assert_equal(2, TargetList.count(), "target list built with 2 targets")
+   assert_equal(2, #TargetList.get_alive(), "both targets alive")
+end)

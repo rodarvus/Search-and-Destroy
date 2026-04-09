@@ -3048,6 +3048,14 @@ function cmd_xtest(name, line, wildcards)
    end
 end
 
+--- Select CP target by index, display list, or attempt mid-campaign pickup
+-- @param wildcards[1] optional index N or empty string
+-- Side effects: if not on CP, calls CP.do_info() to attempt pickup (async);
+--   if on CP, sets State target and triggers Nav navigation
+-- Tested by: cmd_xcp.not_on_cp, cmd_xcp.no_arg_displays_list,
+--   cmd_xcp.numeric_selects_target, cmd_xcp.index_out_of_bounds,
+--   cmd_xcp.numeric_skips_dead, cmd_xcp.unknown_rejected,
+--   workflow.xcp_picks_up_existing_cp
 function cmd_xcp(name, line, wildcards)
    local args = Util.trim(wildcards[1] or "")
 
@@ -3202,6 +3210,11 @@ function on_cp_info_line(name, line, wildcards)
    }
 end
 
+--- Callback: cp info parsing complete — set CP active, detect type, chain to cp check
+-- Side effects: disables grp_cp_info, sets CP._on_cp = true + activity = "cp",
+--   detects area/room type, schedules CP.do_check() via 0.1s DoAfterSpecial
+-- Tested by: CP.info_parse_flow (callbacks only), CP.info_end_sets_cp_state,
+--   workflow.cp_info_to_check_chain, workflow.xcp_picks_up_existing_cp
 function on_cp_info_end(name, line, wildcards)
    EnableTriggerGroup("grp_cp_info", false)
    EnableTimer("tim_parse_safety", false)

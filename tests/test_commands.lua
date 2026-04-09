@@ -87,17 +87,28 @@ run_test("cmd_xcp.numeric_selects_target", function()
    assert_equal("a mutated goat", target.mob, "second target selected")
 end)
 
---- Test: xcp errors when not on CP
--- Covers: cmd_xcp() CP._on_cp guard
+--- Test: xcp attempts CP pickup when not on CP
+-- Setup: CP._on_cp = false (plugin loaded mid-campaign)
+-- Input: cmd_xcp with any argument
+-- Expected: CP.do_info() called (sends "cp info", enables grp_cp_info), no target set (async)
+-- Covers: cmd_xcp() CP pickup path → CP.do_info()
 run_test("cmd_xcp.not_on_cp", function()
-   -- Not on CP — should show error
+   -- Not on CP — should attempt pickup via CP.do_info()
    CP._on_cp = false
    State._activity = "none"
    mock.reset()
 
    cmd_xcp(nil, nil, {[1] = "1"})
 
-   assert_nil(State.get_target(), "no target when not on CP")
+   assert_nil(State.get_target(), "no target set (pickup is async)")
+   -- Verify CP.do_info() was called: sends "cp info" and enables trigger group
+   local send_calls = mock.calls["SendNoEcho"]
+   assert_not_nil(send_calls, "SendNoEcho called for cp info")
+   assert_equal("cp info", send_calls[1][1], "sends cp info command")
+   local enable_calls = mock.calls["EnableTriggerGroup"]
+   assert_not_nil(enable_calls, "EnableTriggerGroup called")
+   assert_equal("grp_cp_info", enable_calls[1][1], "enables cp info trigger group")
+   assert_true(enable_calls[1][2], "trigger group enabled (not disabled)")
 end)
 
 --- Test: xcp with invalid index shows error

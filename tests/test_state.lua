@@ -489,6 +489,35 @@ run_test("CP.info_parse_flow", function()
    assert_equal("The Three Pillars of Diatz", CP._info_list[1].location, "first location correct")
 end)
 
+--- Test: on_cp_info_end sets CP._on_cp and activity (handles mid-campaign plugin load)
+-- Setup: CP._on_cp = false, State._activity = "none", CP._info_list populated
+-- Input: on_cp_info_end() callback
+-- Expected: CP._on_cp = true, activity = "cp", type detected, cp check scheduled
+-- Covers: on_cp_info_end() CP state setting, type detection, DoAfterSpecial chain
+run_test("CP.info_end_sets_cp_state", function()
+   -- Simulate: plugin loaded mid-campaign, cp info parsed but CP.start() never called
+   CP._on_cp = false
+   CP._info_list = {
+      {mob = "a sinister vandal", location = "The Three Pillars of Diatz"},
+      {mob = "a mutated goat", location = "The Killing Fields"},
+   }
+   State._activity = "none"
+   mock.reset()
+
+   on_cp_info_end(nil, nil, {})
+
+   -- Should set CP as active (mid-campaign pickup)
+   assert_true(CP._on_cp, "CP._on_cp set to true by info end")
+   assert_equal("cp", State.get_activity(), "activity set to cp")
+
+   -- Should detect type from info list
+   assert_not_nil(CP._type, "CP type detected")
+
+   -- Should schedule cp check via DoAfterSpecial
+   local timer_calls = mock.calls["DoAfterSpecial"]
+   assert_not_nil(timer_calls, "DoAfterSpecial called to chain cp check")
+end)
+
 --- Test: CP check callbacks parse targets with dead flag, build target list
 -- Input: 4 check lines (3 alive, 1 dead), then on_cp_check_end
 -- Expected: 4 targets in TargetList, alive first, dead last
