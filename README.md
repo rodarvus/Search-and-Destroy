@@ -42,17 +42,18 @@ Core infrastructure that everything else builds on:
 - **Noexp** - Auto-noexp toggling based on TNL cutoff, level 200+ bypass
 - **Test suite** - 220 tests covering all modules, with real SQLite integration testing
 
-### Phase 2: Campaign Pipeline (In Progress)
+### Phase 2: Campaign Pipeline (Complete)
 
 The core gameplay loop — take CP, parse targets, navigate, kill, repeat:
 
-- **TargetList** (done) - Parse CP info/check output into a unified target list with keyword guessing, mapper DB lookups with CONST fallback, mob history integration, area-based vs room-based CP detection. Room-based CPs with multiple area matches show all possibilities with most likely marked first.
-- **AREA_NAME_XREF** (done) - ~260 area long name to area key mappings (from Crowley), used as fallback when mapper DB unavailable
-- **Trigger patterns** (done) - All 40+ triggers validated via PCRE (rex_pcre) against verified game output. 6 wrong patterns fixed, 7 new triggers added (GQ lifecycle, powerup, CP timer, kill detection).
-- **CP** (done) - Campaign info/check trigger callbacks with noexp interaction, CP state machine (start → parse → build → kill → refresh → complete), safety timer recovery
-- **DamageTracker** (next) - Single combined regex for all damage verbs
-- **Nav** (next) - Speedwalk to area start rooms via mapper, Vidblain handling
-- Wire up `xcp`, `go`, `nx`, `xrt` commands
+- **TargetList** - Parse CP info/check output into a unified target list with keyword guessing, mapper DB lookups with CONST fallback, mob history integration, area-based vs room-based CP detection
+- **AREA_NAME_XREF** - ~280 area long name to area key mappings, validated against live mapper DB
+- **Trigger patterns** - All 48 triggers validated via PCRE (rex_pcre) against verified game output
+- **CP** - Campaign info/check trigger callbacks with noexp interaction, CP state machine (start → parse → build → kill → refresh → complete), safety timer recovery
+- **DamageTracker** - Deferred (server cp check response is ground truth for kill identification)
+- **Nav** - Speedwalk to area start rooms via mapper, Vidblain portal handling, fuzzy area matching, arrival detection
+- **Commands** - `xcp` (list display + target selection), `go`, `nx`, `xrt`, `kk`, `xset kw`
+- **Deep review** - Gap analysis against Crowley/WinkleGold/live DBs, code audit, test review, documentation headers
 
 ### Phase 3: Hunting Tools
 
