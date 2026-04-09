@@ -1,6 +1,10 @@
 # Reference plugins (local only, not part of our project)
 Search_and_Destroy.xml
 WinkleGold_*.xml
+
+# Reference databases (live game data, local only)
+Aardwolf.db
+SnDdb.db
 WinkleGold_Database.db
 
 # Original assets (keep locally for future Phase 6/7)
