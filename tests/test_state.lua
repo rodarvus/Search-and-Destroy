@@ -249,6 +249,95 @@ run_test("CP.clear_preserves_gq", function()
    assert_true(true, "placeholder for Phase 5 GQ coexistence test")
 end)
 
+run_test("CP.check_end_current_target_died", function()
+   -- Simulate: target was set, mob killed, cp check shows it dead
+   -- Should auto-select next alive target
+   CP._on_cp = true
+   CP._type = "area"
+   CP._level = 45
+   State._activity = "cp"
+   mock.reset_db()
+   DB.init()
+
+   -- First build: two alive targets
+   CP._check_list = {
+      {mob = "a sinister vandal", location = "The Three Pillars of Diatz", dead = false},
+      {mob = "a mutated goat", location = "The Killing Fields", dead = false},
+   }
+   on_cp_check_end(nil, nil, {})
+   -- Select first target
+   State.set_target(TargetList.get(1))
+   assert_equal("a sinister vandal", State.get_target().mob, "first target selected")
+
+   -- Simulate mob kill: save target, rebuild with first target now dead
+   CP._last_target = State.get_target()
+   mock.reset()
+   CP._check_list = {
+      {mob = "a sinister vandal", location = "The Three Pillars of Diatz", dead = true},
+      {mob = "a mutated goat", location = "The Killing Fields", dead = false},
+   }
+   on_cp_check_end(nil, nil, {})
+
+   -- Current target (vandal) is now dead — should auto-select next alive target (goat)
+   local target = State.get_target()
+   assert_not_nil(target, "target auto-selected after kill")
+   assert_equal("a mutated goat", target.mob, "auto-selected next alive target")
+end)
+
+run_test("CP.check_end_different_target_died", function()
+   -- Simulate: our target is alive, but a different target died
+   -- Should keep current target
+   CP._on_cp = true
+   CP._type = "area"
+   CP._level = 45
+   State._activity = "cp"
+   mock.reset_db()
+   DB.init()
+
+   -- First build: two alive
+   CP._check_list = {
+      {mob = "a sinister vandal", location = "The Three Pillars of Diatz", dead = false},
+      {mob = "a mutated goat", location = "The Killing Fields", dead = false},
+   }
+   on_cp_check_end(nil, nil, {})
+   -- Select second target (goat)
+   State.set_target(TargetList.get(2))
+
+   -- Simulate: a kill happened (not ours), vandal died
+   CP._last_target = State.get_target()
+   mock.reset()
+   CP._check_list = {
+      {mob = "a sinister vandal", location = "The Three Pillars of Diatz", dead = true},
+      {mob = "a mutated goat", location = "The Killing Fields", dead = false},
+   }
+   on_cp_check_end(nil, nil, {})
+
+   -- Our target (goat) is still alive — should keep it
+   local target = State.get_target()
+   assert_not_nil(target, "target preserved")
+   assert_equal("a mutated goat", target.mob, "kept current alive target")
+end)
+
+run_test("CP.check_end_all_dead", function()
+   -- All targets dead — should clear target
+   CP._on_cp = true
+   CP._type = "area"
+   CP._level = 45
+   State._activity = "cp"
+   mock.reset_db()
+   DB.init()
+
+   CP._last_target = {mob = "a sinister vandal", keyword = "sinis vanda"}
+   CP._check_list = {
+      {mob = "a sinister vandal", location = "The Three Pillars of Diatz", dead = true},
+      {mob = "a mutated goat", location = "The Killing Fields", dead = true},
+   }
+   on_cp_check_end(nil, nil, {})
+
+   -- No alive targets — should have no target
+   assert_nil(State.get_target(), "no target when all dead")
+end)
+
 run_test("Noexp.check_tnl_skips_during_cp", function()
    -- check_tnl should NOT turn noexp ON while on a CP
    Noexp._auto_enabled = true

@@ -2753,13 +2753,20 @@ function on_cp_check_end(name, line, wildcards)
    -- Build target list from check data
    TargetList.build(CP._check_list, CP._type, CP._level)
 
-   -- Try to re-find prior target in new list
+   -- Re-match target after list rebuild
    if CP._last_target then
       local found = TargetList.find_by_mob(CP._last_target.mob)
-      if found then
+      if found and not found.dead then
+         -- Prior target is still alive — keep it
          State.set_target(found)
       else
-         State.clear_target()
+         -- Prior target is dead or gone — auto-select next alive target
+         local alive = TargetList.get_alive()
+         if #alive > 0 then
+            State.set_target(alive[1])
+         else
+            State.clear_target()
+         end
       end
       CP._last_target = nil
    end
