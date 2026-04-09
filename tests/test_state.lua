@@ -22,6 +22,22 @@ function setUp()
    State._tier = 0
    State._tnl = 0
    State._dirty = false
+   -- Reset CP state
+   CP._on_cp = false
+   CP._level = 0
+   CP._type = "area"
+   CP._info_list = {}
+   CP._check_list = {}
+   CP._can_get_new = false
+   CP._last_check_time = 0
+   CP._last_target = nil
+   -- Reset TargetList
+   TargetList._main_list = {}
+   TargetList._type = "none"
+   -- Reset Noexp
+   Noexp._auto_enabled = true
+   Noexp._noexp_on = false
+   Noexp._tnl_cutoff = 0
 end
 
 run_test("State.initial", function()
@@ -196,6 +212,12 @@ run_test("CP.start", function()
    assert_equal("cp", State.get_activity(), "activity set to cp")
    assert_false(Noexp._noexp_on, "noexp turned off on CP start")
    assert_false(State._noexp, "State._noexp synced off")
+   -- Should have sent "noexp" game command to toggle it off
+   local sent_noexp = false
+   for _, call in ipairs(mock.calls["SendNoEcho"] or {}) do
+      if call[1] == "noexp" then sent_noexp = true end
+   end
+   assert_true(sent_noexp, "noexp game command sent")
    -- Should have sent "cp info" via SendNoEcho
    local sent_cp_info = false
    for _, call in ipairs(mock.calls["SendNoEcho"] or {}) do

@@ -154,18 +154,14 @@ run_test("MobKeyword.guess_quotation_marks", function()
    local kw
 
    kw = MobKeyword.guess('"the chosen one"', "")
-   assert_no_match('"', kw, "quotation marks stripped")
-   assert_match("chose", kw, "quoted mob: first word correct")
-   assert_match("one", kw, "quoted mob: last word correct")
+   assert_equal("chose one", kw, "quoted mob: exact keyword after quote stripping")
 end)
 
 run_test("MobKeyword.guess_parentheses", function()
    local kw
 
    kw = MobKeyword.guess("(Helper) Fenix", "some_area")
-   assert_no_match("%(", kw, "parentheses stripped")
-   assert_match("helpe", kw, "paren mob: first word")
-   assert_match("fenix", kw, "paren mob: last word")
+   assert_equal("helpe fenix", kw, "paren mob: exact keyword after paren stripping")
 end)
 
 run_test("MobKeyword.guess_long_mob_name", function()

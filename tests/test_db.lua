@@ -153,6 +153,27 @@ run_test("DB.record_mob_and_find", function()
    assert_equal(2, rows[1].freq, "frequency incremented on re-record")
 end)
 
+run_test("DB.find_mob", function()
+   -- Record mobs in different rooms/zones, then find them
+   DB.record_mob("a goblin", "Room A", 10001, "testzone")
+   DB.record_mob("a goblin", "Room B", 10002, "testzone")
+   DB.record_mob("a goblin", "Room A", 10001, "testzone")  -- freq bump
+
+   -- find_mob returns results ordered by freq DESC
+   local results = DB.find_mob("a goblin", "testzone")
+   assert_equal(2, #results, "found 2 room entries")
+   assert_equal(10001, results[1].roomid, "highest freq room first")
+   assert_equal(2, results[1].freq, "freq=2 for most visited room")
+
+   -- find_mob with no zone filter
+   local all = DB.find_mob("a goblin", "")
+   assert_true(#all >= 2, "find without zone returns all")
+
+   -- find_mob miss
+   local miss = DB.find_mob("nonexistent mob", "testzone")
+   assert_equal(0, #miss, "no results for unknown mob")
+end)
+
 run_test("DB.record_kill", function()
    DB.record_mob("a kill target", "Kill Room", 66666, "killzone")
    DB.record_kill("a kill target", "killzone")

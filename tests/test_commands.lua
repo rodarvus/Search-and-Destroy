@@ -334,3 +334,102 @@ run_test("xset_kw.no_target_error", function()
    -- Should not crash, no DB write
    assert_nil(State.get_target(), "still no target")
 end)
+
+------------------------------------------------------------------------
+-- cmd_kk: quick kill
+------------------------------------------------------------------------
+
+run_test("cmd_kk.sends_kill_command", function()
+   State._target = {keyword = "vand", name = "a vandal", area_key = "diatz"}
+   Config._settings = {quick_kill_command = "k"}
+   mock.reset()
+
+   cmd_kk(nil, nil, {})
+
+   local sent = false
+   for _, call in ipairs(mock.calls["SendNoEcho"] or {}) do
+      if call[1] == "k vand" then sent = true end
+   end
+   assert_true(sent, "sent kill command with keyword")
+end)
+
+run_test("cmd_kk.no_target_error", function()
+   State._target = nil
+   mock.reset()
+
+   cmd_kk(nil, nil, {})
+
+   assert_nil(mock.calls["SendNoEcho"], "no command sent without target")
+end)
+
+------------------------------------------------------------------------
+-- cmd_xset: config settings
+------------------------------------------------------------------------
+
+run_test("cmd_xset.set_config_value", function()
+   Config._settings = {}
+   Config.load()
+   mock.reset()
+
+   cmd_xset(nil, nil, {[1] = "debug_mode on"})
+
+   assert_equal("on", Config.get("debug_mode"), "debug_mode set to on")
+end)
+
+run_test("cmd_xset.invalid_key_error", function()
+   mock.reset()
+
+   cmd_xset(nil, nil, {[1] = "nonexistent_key value"})
+
+   -- Should not crash, config unchanged
+   assert_nil(Config._settings["nonexistent_key"], "invalid key not stored")
+end)
+
+------------------------------------------------------------------------
+-- CP.do_info / CP.do_check direct tests
+------------------------------------------------------------------------
+
+run_test("CP.do_info.enables_triggers_and_sends", function()
+   CP._info_list = {{mob = "old"}}
+   mock.reset()
+
+   CP.do_info()
+
+   -- Should clear info list
+   assert_equal(0, #CP._info_list, "info list cleared")
+   -- Should send cp info
+   local sent = false
+   for _, call in ipairs(mock.calls["SendNoEcho"] or {}) do
+      if call[1] == "cp info" then sent = true end
+   end
+   assert_true(sent, "cp info command sent")
+   -- Should enable trigger group
+   local enabled = false
+   for _, call in ipairs(mock.calls["EnableTriggerGroup"] or {}) do
+      if call[1] == "grp_cp_info" and call[2] == true then enabled = true end
+   end
+   assert_true(enabled, "grp_cp_info enabled")
+end)
+
+run_test("CP.do_check.cooldown_guard", function()
+   CP._last_check_time = os.clock()  -- just called
+   mock.reset()
+
+   CP.do_check()
+
+   -- Should be blocked by cooldown
+   assert_nil(mock.calls["SendNoEcho"], "blocked by cooldown")
+end)
+
+run_test("CP.do_check.sends_when_ready", function()
+   CP._last_check_time = os.clock() - 2.0  -- 2 seconds ago, past cooldown
+   mock.reset()
+
+   CP.do_check()
+
+   local sent = false
+   for _, call in ipairs(mock.calls["SendNoEcho"] or {}) do
+      if call[1] == "cp check" then sent = true end
+   end
+   assert_true(sent, "cp check sent when cooldown expired")
+end)
