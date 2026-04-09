@@ -17,6 +17,8 @@ function setUp()
    State._tnl = 0
    State._level = 0
    State._noexp = false
+   -- Reset CP state (check_tnl checks CP._on_cp)
+   CP._on_cp = false
 end
 
 run_test("Noexp.init_defaults", function()
