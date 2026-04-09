@@ -18,14 +18,14 @@ The goal is to combine the strengths of both into a cleaner, more maintainable, 
 | Phase | Name | Status | Tests |
 |-------|------|--------|-------|
 | 1 | Foundation | **Complete** | 220 |
-| 2 | Campaign Pipeline | **In Progress** | 425 |
+| 2 | Campaign Pipeline | **Complete** | 542 |
 | 3 | Hunting Tools | Not started | - |
 | 4 | Smart Features | Not started | - |
 | 5 | GQ Support | Not started | - |
 | 6 | GUI Plugin | Not started | - |
 | 7 | Polish | Not started | - |
 
-**Total: 425/425 tests passing.**
+**Total: 542/542 tests passing.**
 
 ## Project Plan
 
