@@ -2331,12 +2331,155 @@ function TargetList.clear()
 end
 
 ------------------------------------------------------------------------
--- Nav: Navigation (stub - Phase 2)
+-- Nav: Navigation — speedwalk, room cycling, arrival detection
 ------------------------------------------------------------------------
 Nav = {
-   _goto_list = {},
-   _goto_index = 0,
+   _goto_list = {},   -- room IDs for room-based navigation
+   _goto_index = 0,   -- current position in goto_list
+   _dest_area = nil,  -- target area key (for area arrival detection)
+   _dest_room = nil,  -- target room ID (for room arrival detection)
+   _on_arrive = nil,  -- callback function on arrival
 }
+
+--- Vidblain portal room ID
+local VIDBLAIN_PORTAL_ROOM = 11910
+
+--- Check if an area is a Vidblain area
+local function is_vidblain_area(area_key)
+   for _, v in ipairs(CONST.VIDBLAIN_AREAS) do
+      if v == area_key then return true end
+   end
+   return false
+end
+
+--- Send mapper speedwalk command
+function Nav.mapper_goto(roomid)
+   Execute("mapper goto " .. tostring(roomid))
+end
+
+--- Fuzzy match an area key against DEFAULT_START_ROOMS
+-- Returns area_key or nil. Handles ft2→ftii hack.
+function Nav.fuzzy_match_area(input)
+   if not input or input == "" then return nil end
+   local arid = string.lower(input)
+
+   -- ft2→ftii hack (Faerie Tales II)
+   if arid == "ft2" then arid = "ftii" end
+
+   -- Exact match first
+   if CONST.DEFAULT_START_ROOMS[arid] then
+      return arid
+   end
+
+   -- Partial match: area key starts with input
+   for key, _ in pairs(CONST.DEFAULT_START_ROOMS) do
+      if string.sub(key, 1, #arid) == arid then
+         return key
+      end
+   end
+
+   -- Partial match: area key contains input anywhere
+   for key, _ in pairs(CONST.DEFAULT_START_ROOMS) do
+      if string.find(key, arid, 1, true) then
+         return key
+      end
+   end
+
+   return nil
+end
+
+--- Navigate to an area's start room
+function Nav.goto_area(area_key)
+   if not area_key or area_key == "" then return end
+
+   -- ft2→ftii hack
+   if area_key == "ft2" then area_key = "ftii" end
+
+   -- Look up start room
+   local roomid = DB.get_start_room(area_key)
+   if not roomid then
+      Util.error("No start room defined for area: ", area_key)
+      return
+   end
+
+   Nav._dest_area = area_key
+   Nav._dest_room = nil
+
+   -- Vidblain special case
+   if is_vidblain_area(area_key) then
+      local current_area = State._room and State._room.arid or ""
+      if not is_vidblain_area(current_area) then
+         -- Not in Vidblain — go to portal first, then walk to destination
+         Util.info("Navigating to Vidblain portal...")
+         Nav.mapper_goto(VIDBLAIN_PORTAL_ROOM)
+         Execute("enter hole")
+         -- Store actual destination for deferred navigation after arrival in vidblain
+         Nav._vidblain_dest = roomid
+         return
+      end
+   end
+
+   Nav.mapper_goto(roomid)
+end
+
+--- Navigate to a specific room ID
+function Nav.goto_room(roomid)
+   if not roomid then return end
+   Nav._dest_room = roomid
+   Nav._dest_area = nil
+   Nav.mapper_goto(roomid)
+end
+
+--- Advance to next room in goto_list
+function Nav.goto_next()
+   if #Nav._goto_list == 0 then return end
+   if Nav._goto_index >= #Nav._goto_list then return end
+
+   Nav._goto_index = Nav._goto_index + 1
+   local roomid = Nav._goto_list[Nav._goto_index]
+   Nav._dest_room = roomid
+   Nav.mapper_goto(roomid)
+end
+
+--- Called from OnPluginBroadcast on room.info — detect arrival
+function Nav.on_room_change(ri)
+   if not ri then return end
+   local room_num = ri.num
+   local room_area = ri.zone
+
+   -- Room-level arrival
+   if Nav._dest_room and room_num == Nav._dest_room then
+      Nav._dest_room = nil
+      if Nav._on_arrive then
+         Nav._on_arrive()
+         Nav._on_arrive = nil
+      end
+      return
+   end
+
+   -- Area-level arrival
+   if Nav._dest_area and room_area == Nav._dest_area then
+      Nav._dest_area = nil
+      -- If we had a deferred Vidblain destination, navigate there now
+      if Nav._vidblain_dest then
+         Nav.mapper_goto(Nav._vidblain_dest)
+         Nav._vidblain_dest = nil
+         return
+      end
+      if Nav._on_arrive then
+         Nav._on_arrive()
+         Nav._on_arrive = nil
+      end
+      return
+   end
+
+   -- Vidblain transit: check if we arrived in vidblain continent
+   if Nav._vidblain_dest and room_area == "vidblain" then
+      Util.info("Arrived in Vidblain, navigating to destination...")
+      Nav.mapper_goto(Nav._vidblain_dest)
+      Nav._vidblain_dest = nil
+   end
+end
 
 ------------------------------------------------------------------------
 -- HuntTrick: Progressive hunt cycling (stub - Phase 3)
@@ -2449,6 +2592,7 @@ function OnPluginBroadcast(msg, id, name, text)
          local ri = Util.gmcp("room.info")
          if ri then
             State.update_room(ri)
+            Nav.on_room_change(ri)
          end
       elseif text == "comm.quest" then
          local q = Util.gmcp("comm.quest")
