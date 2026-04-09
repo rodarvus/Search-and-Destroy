@@ -3,6 +3,11 @@
 -- Uses rex_pcre (lrexlib) to test patterns against verified game output.
 -- Patterns are hardcoded here as the "intended" correct patterns.
 -- If XML patterns don't match, the XML needs fixing.
+--
+-- Test convention: each test validates one XML trigger's regex pattern.
+-- Input: hardcoded PCRE pattern + sample game output from TestData
+-- Expected: positive samples match with correct captures, negatives don't
+-- Covers: trigger regex correctness (not callback logic)
 ------------------------------------------------------------------------
 
 if not CONST then
@@ -35,6 +40,8 @@ local CF_I = rex.flags().CASELESS
 -- CP INFO triggers
 ------------------------------------------------------------------------
 
+--- Test: CP info level trigger captures 1-3 digit level, rejects malformed
+-- Covers: trg_cp_info_level regex
 run_test("trg_cp_info_level", function()
    local pat = [[^Level Taken\.{8}: \[\s+(\d{1,3}) \]$]]
    -- Positive: captures level
@@ -80,6 +87,8 @@ end)
 -- CP CHECK triggers
 ------------------------------------------------------------------------
 
+--- Test: CP check line captures mob, location, and dead flag (group 3 = "Dead" or false)
+-- Covers: trg_cp_check_line regex with capturing dead group
 run_test("trg_cp_check_line", function()
    local pat = [[^You still have to kill \* (.+) \((.+?)(?: - (Dead))?\)$]]
    -- Alive target: group 3 is false (unmatched capture)
@@ -310,6 +319,11 @@ end)
 -- Patterns use ' (apostrophe) in XML as &#39; — decoded at runtime
 ------------------------------------------------------------------------
 
+--- Test: Hunt direction extracts direction from 6 confidence levels via 5 capture groups
+-- Input: all TestData.hunt_directions samples (6 confidence + 1 failure)
+-- Expected: correct direction captured for each confidence, nil for failure
+-- Note: rex_pcre returns false (not nil) for unmatched groups — use type() check
+-- Covers: trg_ht_direction regex, multi-group alternation capture
 run_test("trg_ht_direction", function()
    -- Combined pattern with 5 capture groups across alternations
    -- Apostrophes decoded from &#39;
@@ -409,6 +423,9 @@ end)
 -- QUICK WHERE triggers (verified against live game output)
 ------------------------------------------------------------------------
 
+--- Test: Quick where match extracts mob (30-char padded) and room name
+-- Input: verified live game output with 30-char mob field
+-- Covers: trg_qw_match regex (30-char format, not "X is in Y" prose)
 run_test("trg_qw_match", function()
    -- 30-char padded format (Crowley + WinkleGold + live verified)
    local pat = [[^(.{30}) (.+)$]]

@@ -54,6 +54,8 @@ end
 -- Full CP workflow: area-based campaign
 ------------------------------------------------------------------------
 
+--- Test: "Good luck!" trigger starts CP flow (state + cp info sent)
+-- Covers: on_cp_request() → CP.start() → CP.do_info()
 run_test("workflow.cp_request_starts_flow", function()
    -- Step 1: NPC says "Good luck!" → CP.start() fires
    on_cp_request(nil, nil, {})
@@ -68,6 +70,8 @@ run_test("workflow.cp_request_starts_flow", function()
    assert_true(sent, "cp info sent after request")
 end)
 
+--- Test: CP request turns noexp off (player needs XP for fighting)
+-- Covers: CP.start() → Noexp.set(false)
 run_test("workflow.cp_request_turns_noexp_off", function()
    -- Noexp is on (player was protecting from leveling)
    Noexp._noexp_on = true
@@ -78,6 +82,9 @@ run_test("workflow.cp_request_turns_noexp_off", function()
    assert_false(Noexp._noexp_on, "noexp turned off on CP start")
 end)
 
+--- Test: CP info parsing → type detection → chains to cp check via DoAfterSpecial
+-- Input: full cp info output from TestData (5 targets)
+-- Covers: on_cp_info_level/start/line/end(), detect_type, DoAfterSpecial chain
 run_test("workflow.cp_info_to_check_chain", function()
    -- Step 2: Simulate cp info output
    on_cp_request(nil, nil, {})
@@ -102,6 +109,10 @@ run_test("workflow.cp_info_to_check_chain", function()
    assert_not_nil(mock.calls["DoAfterSpecial"], "cp check scheduled")
 end)
 
+--- Test: CP check parsing builds target list with alive-first sorting
+-- Input: 4 check lines (3 alive, 1 dead)
+-- Expected: 4 targets, 3 alive first, dead last
+-- Covers: on_cp_check_line/end() → TargetList.build()
 run_test("workflow.cp_check_builds_target_list", function()
    -- Set up CP state as if cp info already completed
    CP._on_cp = true
@@ -131,6 +142,9 @@ run_test("workflow.cp_check_builds_target_list", function()
    assert_equal("a dangerous scorpion", last.mob, "dead target is scorpion")
 end)
 
+--- Test: xcp 1 selects first target, resolves area key, navigates
+-- Expected: target set with mob/area_key/keyword, mapper goto called
+-- Covers: cmd_xcp() → State.set_target() + Nav.goto_area()
 run_test("workflow.xcp_selects_and_navigates", function()
    -- Set up: CP active with targets
    CP._on_cp = true
@@ -164,6 +178,8 @@ run_test("workflow.xcp_selects_and_navigates", function()
    assert_true(navigated, "navigation initiated to target area")
 end)
 
+--- Test: xcp 2 selects second target specifically
+-- Covers: cmd_xcp() numeric index selection
 run_test("workflow.xcp_numeric_selects_specific", function()
    CP._on_cp = true
    CP._type = "area"
@@ -182,6 +198,8 @@ run_test("workflow.xcp_numeric_selects_specific", function()
    assert_equal("a mutated goat", target.mob, "second target selected")
 end)
 
+--- Test: GMCP room.info arrival in target area fires on_arrive callback
+-- Covers: Nav.on_room_change() area arrival detection
 run_test("workflow.arrival_in_area", function()
    -- Set up: navigating to diatz
    Nav._dest_area = "diatz"
@@ -195,6 +213,8 @@ run_test("workflow.arrival_in_area", function()
    assert_nil(Nav._dest_area, "dest_area cleared")
 end)
 
+--- Test: Mob kill saves target for re-match and schedules cp check refresh
+-- Covers: on_cp_mob_killed() → CP._last_target + DoAfterSpecial
 run_test("workflow.mob_killed_refreshes_list", function()
    -- Set up: CP active, target selected, 2 alive targets
    CP._on_cp = true
@@ -217,6 +237,10 @@ run_test("workflow.mob_killed_refreshes_list", function()
    assert_not_nil(mock.calls["DoAfterSpecial"], "cp check scheduled")
 end)
 
+--- Test: After kill, cp check refresh auto-advances to next alive target
+-- Setup: vandal selected → kill → refresh shows vandal dead
+-- Expected: auto-selects goat (next alive)
+-- Covers: on_cp_check_end() re-matching with dead detection + auto-advance
 run_test("workflow.refresh_after_kill_auto_advances", function()
    -- Set up: CP active, target was vandal (now dead after kill)
    CP._on_cp = true
@@ -247,6 +271,8 @@ run_test("workflow.refresh_after_kill_auto_advances", function()
    assert_equal("a mutated goat", target.mob, "auto-advanced to goat")
 end)
 
+--- Test: CP complete resets all state (CP, target, target list, activity)
+-- Covers: on_cp_complete() → CP.clear()
 run_test("workflow.cp_complete_clears_everything", function()
    -- Set up: CP active
    CP._on_cp = true
@@ -264,6 +290,8 @@ run_test("workflow.cp_complete_clears_everything", function()
    assert_equal(0, TargetList.count(), "target list cleared")
 end)
 
+--- Test: "You may take another campaign" sets can_get_new flag
+-- Covers: on_cp_new_available()
 run_test("workflow.new_cp_available_after_complete", function()
    CP._can_get_new = false
 
@@ -272,6 +300,8 @@ run_test("workflow.new_cp_available_after_complete", function()
    assert_true(CP._can_get_new, "can get new CP")
 end)
 
+--- Test: After CP complete, noexp activates when TNL < cutoff and not on CP
+-- Covers: Noexp.check_tnl() post-CP normal activation
 run_test("workflow.noexp_activates_when_not_on_cp", function()
    -- After CP complete, TNL < cutoff, not on CP → noexp should activate
    CP._on_cp = false
@@ -287,6 +317,8 @@ run_test("workflow.noexp_activates_when_not_on_cp", function()
    assert_true(Noexp._noexp_on, "noexp on when TNL < cutoff and not on CP")
 end)
 
+--- Test: During active CP, noexp stays off even when TNL < cutoff
+-- Covers: Noexp.check_tnl() CP._on_cp guard
 run_test("workflow.noexp_stays_off_during_cp", function()
    -- During CP, TNL < cutoff → noexp should NOT activate
    CP._on_cp = true
@@ -302,6 +334,10 @@ run_test("workflow.noexp_stays_off_during_cp", function()
    assert_false(Noexp._noexp_on, "noexp stays off during CP")
 end)
 
+--- Test: FULL CYCLE — request → info → check → select → kill → refresh → kill → complete
+-- Simulates entire CP lifecycle: 2 targets, kill both, complete.
+-- Verifies state at each step: activity, target list, auto-advance, cleanup.
+-- Covers: CP.start, on_cp_info_*, on_cp_check_*, cmd_xcp, on_cp_mob_killed, on_cp_complete
 run_test("workflow.full_cycle_request_to_complete", function()
    -- Complete cycle: request → info → check → select → kill → check → complete
 
@@ -356,6 +392,10 @@ run_test("workflow.full_cycle_request_to_complete", function()
    assert_equal(0, TargetList.count(), "7: list cleared")
 end)
 
+--- Test: xset kw override persists through cp check refresh via DB
+-- Setup: override keyword, simulate cp check refresh
+-- Expected: keyword survives rebuild (DB mob_overrides → MobKeyword.guess stage 1)
+-- Covers: cmd_xset "kw", DB.mob_overrides → MobKeyword.guess integration
 run_test("workflow.xset_kw_persists_across_refresh", function()
    -- Override keyword, then verify it persists after cp check refresh
    CP._on_cp = true

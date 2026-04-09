@@ -1,6 +1,5 @@
 ------------------------------------------------------------------------
 -- test_target_list.lua - Tests for TargetList module
--- TDD: These tests define expected behavior. Implementation follows.
 ------------------------------------------------------------------------
 
 if not CONST then
@@ -14,7 +13,6 @@ function setUp()
    mock.reset()
    mock.reset_db()
    DB.init()
-   -- Reset TargetList state
    TargetList._main_list = {}
    TargetList._type = "none"
 end
@@ -27,8 +25,11 @@ end
 -- detect_type: determine area-based vs room-based CP
 ------------------------------------------------------------------------
 
+--- Test: All locations are known area names → "area" type
+-- Input: 3 targets with locations matching AREA_NAME_XREF entries
+-- Expected: "area"
+-- Covers: TargetList.detect_type()
 run_test("TargetList.detect_type_area", function()
-   -- All locations are area names found in AREA_NAME_XREF
    local info_list = {
       {mob = "a sinister vandal", location = "The Three Pillars of Diatz"},
       {mob = "a mutated goat", location = "The Killing Fields"},
@@ -38,8 +39,11 @@ run_test("TargetList.detect_type_area", function()
    assert_equal("area", t, "all area names → area type")
 end)
 
+--- Test: No locations match area names → "room" type
+-- Input: 3 targets with room names not in AREA_NAME_XREF
+-- Expected: "room"
+-- Covers: TargetList.detect_type()
 run_test("TargetList.detect_type_room", function()
-   -- All locations are room names (not in AREA_NAME_XREF)
    local info_list = {
       {mob = "a troll guard", location = "In The Courtyard"},
       {mob = "an orc shaman", location = "Near The Fire Pit"},
@@ -49,8 +53,11 @@ run_test("TargetList.detect_type_room", function()
    assert_equal("room", t, "no area names → room type")
 end)
 
+--- Test: Majority area names wins tie (2 area, 1 room → "area")
+-- Input: 2 known area names + 1 unknown
+-- Expected: "area" (area_count >= room_count)
+-- Covers: TargetList.detect_type() majority voting
 run_test("TargetList.detect_type_majority_area", function()
-   -- Mix: 2 area names, 1 room name → area wins (majority)
    local info_list = {
       {mob = "a vandal", location = "The Three Pillars of Diatz"},
       {mob = "a goat", location = "The Killing Fields"},
@@ -60,6 +67,10 @@ run_test("TargetList.detect_type_majority_area", function()
    assert_equal("area", t, "2 area + 1 room → area")
 end)
 
+--- Test: Empty list returns "none"
+-- Input: empty info_list
+-- Expected: "none"
+-- Covers: TargetList.detect_type() empty guard
 run_test("TargetList.detect_type_empty", function()
    local t = TargetList.detect_type({})
    assert_equal("none", t, "empty list → none")
@@ -69,18 +80,18 @@ end)
 -- build: area-based CP target list
 ------------------------------------------------------------------------
 
+--- Test: Build creates correct number of targets with keywords and dead flags
+-- Input: 3 targets (2 alive, 1 dead) in known areas
+-- Expected: 3 targets, alive first, each with keyword and correct dead flag
+-- Covers: TargetList.build(), TargetList.count(), TargetList.get()
 run_test("TargetList.build_area_basic", function()
-   -- Build from cp_check_list with area-based CP
    local check_list = {
       {mob = "a sinister vandal", location = "The Three Pillars of Diatz", dead = false},
       {mob = "a mutated goat", location = "The Killing Fields", dead = false},
       {mob = "a dangerous scorpion", location = "Desert Doom", dead = true},
    }
    TargetList.build(check_list, "area", 45)
-
    assert_equal(3, TargetList.count(), "3 targets built")
-
-   -- First target
    local t1 = TargetList.get(1)
    assert_not_nil(t1, "target 1 exists")
    assert_equal("a sinister vandal", t1.mob, "target 1 mob")
@@ -88,13 +99,15 @@ run_test("TargetList.build_area_basic", function()
    assert_false(t1.dead, "target 1 alive")
    assert_not_nil(t1.keyword, "target 1 has keyword")
    assert_true(#t1.keyword > 0, "target 1 keyword not empty")
-
-   -- Dead target should be in list
    local t3 = TargetList.get(3)
    assert_not_nil(t3, "target 3 exists")
    assert_true(t3.dead, "target 3 is dead")
 end)
 
+--- Test: Build resolves area key from AREA_NAME_XREF
+-- Input: target in "The Three Pillars of Diatz"
+-- Expected: area_key = "diatz"
+-- Covers: TargetList.build() → TargetList.resolve_area_key()
 run_test("TargetList.build_area_resolves_area_key", function()
    local check_list = {
       {mob = "a sinister vandal", location = "The Three Pillars of Diatz", dead = false},
@@ -104,18 +117,29 @@ run_test("TargetList.build_area_resolves_area_key", function()
    assert_equal("diatz", t.area_key, "area key resolved from AREA_NAME_XREF")
 end)
 
+--- Test: resolve_area_key returns nil for nil/empty input
+-- Input: nil, ""
+-- Expected: nil for both
+-- Covers: TargetList.resolve_area_key() nil guard
 run_test("TargetList.resolve_area_key_nil", function()
    assert_nil(TargetList.resolve_area_key(nil), "nil location returns nil")
    assert_nil(TargetList.resolve_area_key(""), "empty location returns nil")
 end)
 
+--- Test: resolve_area_key returns correct key for known area
+-- Input: "The Three Pillars of Diatz"
+-- Expected: "diatz"
+-- Covers: TargetList.resolve_area_key() CONST fallback
 run_test("TargetList.resolve_area_key_known", function()
    local key = TargetList.resolve_area_key("The Three Pillars of Diatz")
    assert_equal("diatz", key, "resolves known area from AREA_NAME_XREF")
 end)
 
+--- Test: Unknown location produces target with link_type "unknown"
+-- Input: target in "Totally Unknown Area" (not in XREF or mapper)
+-- Expected: target exists but link_type = "unknown"
+-- Covers: TargetList.build() unknown area handling
 run_test("TargetList.build_area_unknown_location", function()
-   -- Location that's not in AREA_NAME_XREF or mapper
    local check_list = {
       {mob = "a mystery mob", location = "Totally Unknown Area", dead = false},
    }
@@ -125,19 +149,25 @@ run_test("TargetList.build_area_unknown_location", function()
    assert_equal("unknown", t.link_type, "unknown location → unknown link_type")
 end)
 
+--- Test: Build generates keywords via MobKeyword.guess
+-- Input: "a sinister vandal" in "diatz"
+-- Expected: keyword contains "sinis" and "vanda" fragments
+-- Covers: TargetList.build() → MobKeyword.guess()
 run_test("TargetList.build_area_keyword_generation", function()
    local check_list = {
       {mob = "a sinister vandal", location = "The Three Pillars of Diatz", dead = false},
    }
    TargetList.build(check_list, "area", 45)
    local t = TargetList.get(1)
-   -- MobKeyword.guess("a sinister vandal", "diatz") should produce "sinis vanda"
    assert_match("sinis", t.keyword, "keyword starts with sinis")
    assert_match("vanda", t.keyword, "keyword ends with vanda")
 end)
 
+--- Test: Build populates rooms from mob DB when mob history exists
+-- Setup: pre-populate DB with mob sighting in diatz
+-- Expected: found_in_area=true, rooms list non-empty
+-- Covers: TargetList.build() → DB.find_mob() integration
 run_test("TargetList.build_area_mob_db_lookup", function()
-   -- Pre-populate mob DB with a known mob
    DB.record_mob("a sinister vandal", "A Dusty Room", 1255, "diatz")
    local check_list = {
       {mob = "a sinister vandal", location = "The Three Pillars of Diatz", dead = false},
@@ -148,8 +178,11 @@ run_test("TargetList.build_area_mob_db_lookup", function()
    assert_true(#t.rooms > 0, "rooms list populated from mob DB")
 end)
 
+--- Test: Build handles mob not in DB (no history)
+-- Input: mob never recorded in DB
+-- Expected: found_in_area=false, rooms empty
+-- Covers: TargetList.build() DB miss path
 run_test("TargetList.build_area_mob_db_miss", function()
-   -- No mob DB history for this mob
    local check_list = {
       {mob = "a never seen creature", location = "The Three Pillars of Diatz", dead = false},
    }
@@ -160,9 +193,13 @@ run_test("TargetList.build_area_mob_db_miss", function()
 end)
 
 ------------------------------------------------------------------------
--- build: sorting (alive first, dead last)
+-- Sorting
 ------------------------------------------------------------------------
 
+--- Test: Build sorts alive targets before dead targets
+-- Input: dead first, alive second in input order
+-- Expected: alive at index 1, dead at index 2 after sort
+-- Covers: TargetList.build() stable sort (alive before dead)
 run_test("TargetList.build_sorts_alive_first", function()
    local check_list = {
       {mob = "dead mob", location = "The Three Pillars of Diatz", dead = true},
@@ -176,9 +213,13 @@ run_test("TargetList.build_sorts_alive_first", function()
 end)
 
 ------------------------------------------------------------------------
--- get_alive: filter to alive targets only
+-- get_alive
 ------------------------------------------------------------------------
 
+--- Test: get_alive returns only alive targets in order
+-- Input: 1 dead + 2 alive targets
+-- Expected: 2-element list with alive targets only, in input order
+-- Covers: TargetList.get_alive()
 run_test("TargetList.get_alive", function()
    local check_list = {
       {mob = "dead mob", location = "The Three Pillars of Diatz", dead = true},
@@ -193,9 +234,13 @@ run_test("TargetList.get_alive", function()
 end)
 
 ------------------------------------------------------------------------
--- find_by_mob: locate target by mob name
+-- find_by_mob
 ------------------------------------------------------------------------
 
+--- Test: find_by_mob returns matching target
+-- Input: search for "a mutated goat" in 2-target list
+-- Expected: returns target with matching mob name
+-- Covers: TargetList.find_by_mob()
 run_test("TargetList.find_by_mob", function()
    local check_list = {
       {mob = "a sinister vandal", location = "The Three Pillars of Diatz", dead = false},
@@ -207,6 +252,10 @@ run_test("TargetList.find_by_mob", function()
    assert_equal("a mutated goat", t.mob, "correct mob returned")
 end)
 
+--- Test: find_by_mob returns nil for unknown mob
+-- Input: search for nonexistent mob name
+-- Expected: nil
+-- Covers: TargetList.find_by_mob() miss
 run_test("TargetList.find_by_mob_miss", function()
    local check_list = {
       {mob = "a sinister vandal", location = "The Three Pillars of Diatz", dead = false},
@@ -217,9 +266,13 @@ run_test("TargetList.find_by_mob_miss", function()
 end)
 
 ------------------------------------------------------------------------
--- update_dead: mark a target as dead
+-- update_dead
 ------------------------------------------------------------------------
 
+--- Test: update_dead marks a live target as dead
+-- Setup: build with alive target, then update_dead
+-- Expected: target.dead changes from false to true
+-- Covers: TargetList.update_dead()
 run_test("TargetList.update_dead", function()
    local check_list = {
       {mob = "a sinister vandal", location = "The Three Pillars of Diatz", dead = false},
@@ -231,9 +284,13 @@ run_test("TargetList.update_dead", function()
 end)
 
 ------------------------------------------------------------------------
--- clear: reset list
+-- clear
 ------------------------------------------------------------------------
 
+--- Test: clear empties the target list
+-- Setup: build with 1 target, then clear
+-- Expected: count = 0
+-- Covers: TargetList.clear()
 run_test("TargetList.clear", function()
    local check_list = {
       {mob = "a sinister vandal", location = "The Three Pillars of Diatz", dead = false},
@@ -245,27 +302,32 @@ run_test("TargetList.clear", function()
 end)
 
 ------------------------------------------------------------------------
--- build: room-based CP (basic)
+-- Room-based CP
 ------------------------------------------------------------------------
 
+--- Test: Room-based build creates target even without mapper data
+-- Input: room name not in mapper (mock returns empty)
+-- Expected: target exists with mob name preserved, may be "unknown" type
+-- Covers: TargetList.build() with cp_type="room"
 run_test("TargetList.build_room_basic", function()
    local check_list = {
       {mob = "a troll guard", location = "In The Courtyard", dead = false},
    }
    TargetList.build(check_list, "room", 90)
-   -- Room-based targets may resolve to "unknown" if mapper has no matching rooms
-   -- (our mock mapper returns empty). That's correct behavior.
    local t = TargetList.get(1)
    assert_not_nil(t, "room target exists")
    assert_equal("a troll guard", t.mob, "mob name preserved")
 end)
 
 ------------------------------------------------------------------------
--- CP check dead flag via build
+-- Dead flag from cp check
 ------------------------------------------------------------------------
 
+--- Test: Dead flag from cp check correctly propagates through build
+-- Input: 2 targets, one alive and one dead
+-- Expected: dead flag preserved on correct target after sort
+-- Covers: TargetList.build() dead flag handling
 run_test("TargetList.build_dead_flag_from_check", function()
-   -- Simulate cp check output where one mob is dead
    local check_list = {
       {mob = "a sinister vandal", location = "The Three Pillars of Diatz", dead = false},
       {mob = "a mutated goat", location = "The Killing Fields", dead = true},
