@@ -34,6 +34,21 @@ function setUp()
    State._target = nil
    State._activity = "none"
    State._level = 50
+   -- Reset hunting modules
+   HuntTrick._index = 1
+   HuntTrick._keyword = ""
+   HuntTrick._active = false
+   HuntTrick._first_target = true
+   HuntTrick._auto_go = false
+   QuickWhere._index = 1
+   QuickWhere._keyword = ""
+   QuickWhere._mob_name = ""
+   QuickWhere._exact = false
+   QuickWhere._active = false
+   QuickWhere._auto_go = false
+   AutoHunt._keyword = ""
+   AutoHunt._direction = ""
+   AutoHunt._active = false
 end
 
 function tearDown()
@@ -554,4 +569,68 @@ run_test("CP.do_check.sends_when_ready", function()
    end
    assert_true(line_enabled, "trg_cp_check_line enabled")
    assert_false(end_enabled, "trg_cp_check_end NOT enabled yet")
+end)
+
+------------------------------------------------------------------------
+-- cmd_xcp: arrival triggers hunting tools (Phase 3 integration)
+------------------------------------------------------------------------
+
+--- Test: xcp with action_mode="ht" triggers HuntTrick on area arrival
+-- Setup: target list built, xcp_action_mode = "ht"
+-- Expected: after simulating area arrival, HuntTrick._active = true
+-- Covers: cmd_xcp() + Nav._on_arrive → HuntTrick.start()
+run_test("cmd_xcp.arrive_triggers_ht", function()
+   build_test_targets()
+   mock.variables["snd_xcp_action_mode"] = "ht"
+   Config.load()
+   mock.reset()
+
+   cmd_xcp(nil, nil, {[1] = "1"})
+
+   -- Verify on_arrive callback is set
+   assert_true(Nav._on_arrive ~= nil, "on_arrive callback set")
+
+   -- Simulate arrival in the target area
+   local target = State.get_target()
+   assert_true(target ~= nil, "target selected")
+   Nav._on_arrive()
+   assert_true(HuntTrick._active, "HT started on arrival")
+   assert_equal(target.keyword, HuntTrick._keyword, "HT uses target keyword")
+end)
+
+--- Test: xcp with action_mode="qw" triggers QuickWhere on arrival
+-- Setup: target list built, xcp_action_mode = "qw"
+-- Expected: after simulating area arrival, QuickWhere._active = true
+-- Covers: cmd_xcp() + Nav._on_arrive → QuickWhere.start_exact()
+run_test("cmd_xcp.arrive_triggers_qw", function()
+   build_test_targets()
+   mock.variables["snd_xcp_action_mode"] = "qw"
+   Config.load()
+   mock.reset()
+
+   cmd_xcp(nil, nil, {[1] = "1"})
+
+   assert_true(Nav._on_arrive ~= nil, "on_arrive callback set")
+
+   local target = State.get_target()
+   Nav._on_arrive()
+   assert_true(QuickWhere._active, "QW started on arrival")
+   assert_true(QuickWhere._exact, "QW in exact mode")
+   assert_true(QuickWhere._auto_go, "QW with auto_go")
+   assert_equal(target.keyword, QuickWhere._keyword, "QW uses target keyword")
+end)
+
+--- Test: xcp with action_mode="off" does not trigger hunting tools
+-- Setup: target list built, xcp_action_mode = "off"
+-- Expected: on_arrive is nil
+-- Covers: cmd_xcp() action_mode off
+run_test("cmd_xcp.arrive_off_no_action", function()
+   build_test_targets()
+   mock.variables["snd_xcp_action_mode"] = "off"
+   Config.load()
+   mock.reset()
+
+   cmd_xcp(nil, nil, {[1] = "1"})
+
+   assert_nil(Nav._on_arrive, "no on_arrive callback when action=off")
 end)

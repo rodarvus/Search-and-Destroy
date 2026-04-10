@@ -2008,7 +2008,6 @@ State = {
    _char_state = "0",
    _noexp = false,
    _level = 0,
-   _tier = 0,
    _tnl = 0,
    _dirty = false,
 }
@@ -2545,9 +2544,58 @@ local function is_vidblain_area(area_key)
    return false
 end
 
+--- Return path to the mapper database (Aardwolf.db)
+-- @return string path to Aardwolf.db
+-- Tested by: Nav.mapper_db_path
+function Nav.mapper_db_path()
+   return GetInfo(66) .. "Aardwolf.db"
+end
+
 --- Send mapper speedwalk command
 function Nav.mapper_goto(roomid)
    Execute("mapper goto " .. tostring(roomid))
+end
+
+--- Search mapper DB for rooms matching a name in a specific area
+-- @param room_name exact room name to match
+-- @param area_key area short key (e.g., "diatz")
+-- @return list of {uid=string, name=string} tables, or empty table on failure
+-- Side effects: opens and closes Aardwolf.db read-only
+-- Tested by: Nav.search_rooms_found, _no_match, _wrong_area, _result_fields, _nil_args, _no_db
+function Nav.search_rooms(room_name, area_key)
+   if not room_name or not area_key then return {} end
+   local results = {}
+   local ok, db = pcall(function()
+      return sqlite3.open(Nav.mapper_db_path())
+   end)
+   if not ok or not db then return {} end
+
+   local sql = string.format(
+      "SELECT uid, name FROM rooms WHERE name = %s AND area = %s",
+      Util.fixsql(room_name), Util.fixsql(area_key)
+   )
+   pcall(function()
+      for row in db:nrows(sql) do
+         table.insert(results, {uid = row.uid, name = row.name})
+      end
+   end)
+   db:close()
+   return results
+end
+
+--- Build goto_list from search results (room UIDs)
+-- @param results list of {uid=string, name=string} from search_rooms
+-- Side effects: sets Nav._goto_list and Nav._goto_index
+-- Tested by: Nav.build_goto_list_basic, _empty, _skips_invalid
+function Nav.build_goto_list(results)
+   Nav._goto_list = {}
+   Nav._goto_index = 0
+   for _, r in ipairs(results) do
+      local id = tonumber(r.uid)
+      if id then
+         table.insert(Nav._goto_list, id)
+      end
+   end
 end
 
 --- Fuzzy match an area key against DEFAULT_START_ROOMS (prefix then substring)
@@ -2684,31 +2732,219 @@ function Nav.on_room_change(ri)
 end
 
 ------------------------------------------------------------------------
--- HuntTrick: Progressive hunt cycling (stub - Phase 3)
+-- HuntTrick: Progressive hunt cycling
+-- Cycles through numbered mob instances (1.mob, 2.mob, ...) to find
+-- a specific target. On completion/failure, chains to QuickWhere.
 ------------------------------------------------------------------------
 HuntTrick = {
-   _index = 1,
-   _keyword = "",
-   _active = false,
+   _index = 1,           -- current mob instance number
+   _keyword = "",         -- search keyword
+   _active = false,       -- is hunt trick running?
+   _first_target = true,  -- is this the first hunt attempt? (for fallback)
+   _auto_go = false,      -- auto-navigate after QW finds room (xcp flow)
 }
 
+--- Start hunt trick: enable triggers and send hunt command
+-- @param index mob instance number (1-based)
+-- @param keyword mob keyword to hunt
+-- @param mob_name full mob name (optional, for no_hunt check)
+-- @param area_key area key (optional, for no_hunt check)
+-- Side effects: resets QW/AH, enables grp_hunt_trick, sends hunt command
+-- Tested by: HuntTrick.start_basic, _with_index, _no_1_prefix, _resets_others, _no_hunt_blocked
+function HuntTrick.start(index, keyword, mob_name, area_key)
+   -- Re-entrant safety: reset other tools
+   QuickWhere.reset()
+   AutoHunt.reset()
+
+   -- Check no_hunt override
+   if mob_name and area_key then
+      local override = DB.get_mob_override(mob_name, area_key)
+      if override and override.no_hunt == 1 then
+         Util.error("Hunt blocked: ", mob_name, " is flagged no_hunt in ", area_key)
+         return
+      end
+   end
+
+   HuntTrick._index = index or 1
+   HuntTrick._keyword = keyword or ""
+   HuntTrick._active = true
+
+   EnableTriggerGroup("grp_hunt_trick", true)
+
+   if HuntTrick._index == 1 then
+      Send("hunt " .. HuntTrick._keyword)
+   else
+      Send(string.format("hunt %d.%s", HuntTrick._index, HuntTrick._keyword))
+   end
+end
+
+--- Reset hunt trick state and disable triggers
+-- Tested by: HuntTrick.reset_clears_state
+function HuntTrick.reset()
+   EnableTriggerGroup("grp_hunt_trick", false)
+   HuntTrick._index = 1
+   HuntTrick._keyword = ""
+   HuntTrick._active = false
+   HuntTrick._first_target = true
+   HuntTrick._auto_go = false
+end
+
+--- Check if hunt trick is currently active
+-- @return boolean
+-- Tested by: HuntTrick.is_active
+function HuntTrick.is_active()
+   return HuntTrick._active
+end
+
 ------------------------------------------------------------------------
--- AutoHunt: Auto-hunt with direction following (stub - Phase 3)
+-- AutoHunt: Auto-hunt with direction following
 ------------------------------------------------------------------------
 AutoHunt = {
-   _mob = "",
+   _keyword = "",
    _direction = "",
    _active = false,
 }
 
+--- Direction long-to-short map
+local DIR_MAP = {north="n", south="s", east="e", west="w", up="u", down="d"}
+
+--- Start auto-hunt: enable triggers and send initial hunt command
+-- @param keyword mob keyword to hunt
+-- Side effects: resets HT/QW, enables grp_auto_hunt, sends hunt command
+-- Tested by: AutoHunt.start_basic, .start_resets_others
+function AutoHunt.start(keyword)
+   HuntTrick.reset()
+   QuickWhere.reset()
+
+   AutoHunt._keyword = keyword or ""
+   AutoHunt._active = true
+   AutoHunt._direction = ""
+
+   EnableTriggerGroup("grp_auto_hunt", true)
+   Send("hunt " .. AutoHunt._keyword)
+end
+
+--- Reset auto-hunt state and disable triggers
+-- Tested by: AutoHunt.reset_clears_state
+function AutoHunt.reset()
+   EnableTriggerGroup("grp_auto_hunt", false)
+   AutoHunt._keyword = ""
+   AutoHunt._direction = ""
+   AutoHunt._active = false
+end
+
+--- Check if auto-hunt is currently active
+-- @return boolean
+function AutoHunt.is_active()
+   return AutoHunt._active
+end
+
 ------------------------------------------------------------------------
--- QuickWhere: Quick where iteration (stub - Phase 3)
+-- QuickWhere: Quick where iteration
 ------------------------------------------------------------------------
 QuickWhere = {
    _index = 1,
    _exact = false,
    _active = false,
+   _keyword = "",
+   _mob_name = "",
+   _auto_go = false,
 }
+
+--- Reset quick where state and disable triggers
+-- Tested by: QuickWhere.reset_clears_state
+function QuickWhere.reset()
+   EnableTriggerGroup("grp_quick_where", false)
+   QuickWhere._index = 1
+   QuickWhere._exact = false
+   QuickWhere._active = false
+   QuickWhere._keyword = ""
+   QuickWhere._mob_name = ""
+   QuickWhere._auto_go = false
+end
+
+--- Check if quick where is currently active
+-- @return boolean
+function QuickWhere.is_active()
+   return QuickWhere._active
+end
+
+--- Start quick where in keyword mode
+-- @param index starting instance number
+-- @param keyword mob keyword
+-- @param auto_go auto-navigate to first result (optional)
+-- Side effects: resets HT/AH, enables grp_quick_where, sends where command
+-- Tested by: QuickWhere.start_basic, _with_index, _no_1_prefix
+function QuickWhere.start(index, keyword, auto_go)
+   HuntTrick.reset()
+   AutoHunt.reset()
+
+   QuickWhere._index = index or 1
+   QuickWhere._keyword = keyword or ""
+   QuickWhere._exact = false
+   QuickWhere._mob_name = ""
+   QuickWhere._active = true
+   QuickWhere._auto_go = auto_go or false
+
+   EnableTriggerGroup("grp_quick_where", true)
+
+   if QuickWhere._index == 1 then
+      Send("where " .. QuickWhere._keyword)
+   else
+      Send(string.format("where %d.%s", QuickWhere._index, QuickWhere._keyword))
+   end
+end
+
+--- Start quick where in exact mode (matches full mob name in 30-char field)
+-- @param index starting instance number
+-- @param keyword mob keyword for the where command
+-- @param mob_name full mob name for 30-char exact matching
+-- @param auto_go auto-navigate to first result (optional)
+-- Side effects: resets HT/AH, enables grp_quick_where, sends where command
+-- Tested by: QuickWhere.start_exact_basic
+function QuickWhere.start_exact(index, keyword, mob_name, auto_go)
+   HuntTrick.reset()
+   AutoHunt.reset()
+
+   QuickWhere._index = index or 1
+   QuickWhere._keyword = keyword or ""
+   QuickWhere._exact = true
+   QuickWhere._mob_name = mob_name or ""
+   QuickWhere._active = true
+   QuickWhere._auto_go = auto_go or false
+
+   EnableTriggerGroup("grp_quick_where", true)
+
+   if QuickWhere._index == 1 then
+      Send("where " .. QuickWhere._keyword)
+   else
+      Send(string.format("where %d.%s", QuickWhere._index, QuickWhere._keyword))
+   end
+end
+
+--- Pure function: check if a 30-char where result matches our target
+-- @param mob_field 30-char mob field from where output (trimmed)
+-- @param exact boolean — exact name matching?
+-- @param mob_name full mob name (for exact mode)
+-- @param keyword mob keyword (for keyword mode)
+-- @return boolean
+-- Tested by: QuickWhere.check_match_exact_*, check_match_keyword_*
+function QuickWhere.check_match(mob_field, exact, mob_name, keyword)
+   local field = Util.trim(string.lower(mob_field or ""))
+   if exact then
+      local target = Util.trim(string.lower(string.sub(mob_name or "", 1, 30)))
+      return field == target
+   else
+      -- Keyword mode: check if any word of keyword appears in mob field
+      local parts = Util.split(string.lower(keyword or ""), "%S+")
+      for _, part in ipairs(parts) do
+         if string.find(field, part, 1, true) then
+            return true
+         end
+      end
+      return false
+   end
+end
 
 ------------------------------------------------------------------------
 -- SmartScan: Scan + consider (stub - Phase 4)
@@ -3063,7 +3299,9 @@ end
 -- Tested by: cmd_xcp.not_on_cp, cmd_xcp.no_arg_displays_list,
 --   cmd_xcp.numeric_selects_target, cmd_xcp.index_out_of_bounds,
 --   cmd_xcp.numeric_skips_dead, cmd_xcp.unknown_rejected,
---   workflow.xcp_selects_and_navigates, workflow.xcp_picks_up_existing_cp
+--   cmd_xcp.arrive_triggers_ht, cmd_xcp.arrive_triggers_qw, cmd_xcp.arrive_off_no_action,
+--   workflow.xcp_selects_and_navigates, workflow.xcp_picks_up_existing_cp,
+--   workflow.xcp_ht_to_qw_chain, workflow.xcp_qw_direct
 function cmd_xcp(name, line, wildcards)
    local args = Util.trim(wildcards[1] or "")
 
@@ -3102,11 +3340,14 @@ function cmd_xcp(name, line, wildcards)
 
       -- Set arrival callback based on xcp_action_mode (Crowley's execute_in_area pattern)
       local action = Config.get("xcp_action_mode")
-      if action ~= "off" then
+      if action == "ht" then
          Nav._on_arrive = function()
-            -- TODO Phase 3: replace with actual hunt trick / quick where
-            local mode_desc = (action == "ht") and "hunt trick" or "quick where"
-            Util.info("Arrived in ", t.area_key, " — use ", mode_desc, " to find ", t.mob)
+            HuntTrick._auto_go = true
+            HuntTrick.start(1, t.keyword)
+         end
+      elseif action == "qw" then
+         Nav._on_arrive = function()
+            QuickWhere.start_exact(1, t.keyword, t.mob, true)
          end
       end
 
@@ -3120,6 +3361,10 @@ function cmd_xcp(name, line, wildcards)
    end
 end
 
+--- Navigate to a room in the goto_list by index
+-- @param wildcards[1] optional index N (default 1)
+-- Side effects: sets Nav._goto_index, calls Nav.goto_room
+-- Tested by: cmd_go.navigate_by_index, cmd_go.default_first, cmd_go.empty_list, cmd_go.area_string
 function cmd_go(name, line, wildcards)
    local args = Util.trim(wildcards[1] or "")
    local index = tonumber(args)
@@ -3137,15 +3382,13 @@ function cmd_go(name, line, wildcards)
    end
 
    Nav._goto_index = index
-   if type(entry) == "string" then
-      -- Area ID — navigate to area start room
-      Nav.goto_area(entry)
-   else
-      -- Room ID — direct navigation
-      Nav.goto_room(entry)
-   end
+   -- goto_list contains numeric room IDs (from Nav.build_goto_list)
+   Nav.goto_room(entry)
 end
 
+--- Advance to next room in goto_list (only if at current indexed room)
+-- Side effects: increments Nav._goto_index, calls Nav.mapper_goto
+-- Tested by: cmd_nx.advances_room, cmd_nx.end_of_list, cmd_nx.empty_list
 function cmd_nx(name, line, wildcards)
    if #Nav._goto_list == 0 then
       Util.error("No room list. Use xcp to select a target first.")
@@ -3168,20 +3411,108 @@ function cmd_nx(name, line, wildcards)
    Nav.mapper_goto(next_entry)
 end
 
+--- Hunt trick command handler
+-- Usage: ht (use current target), ht <mob>, ht N.mob, ht abort, ht 0
+-- Tested by: cmd_ht.no_target_error, .uses_current_target, .with_mob_arg,
+--            .with_indexed_arg, .abort, .zero_abort
 function cmd_ht(name, line, wildcards)
-   Util.info("ht: Not yet implemented (Phase 3)")
+   local args = Util.trim(wildcards[1] or "")
+
+   -- Abort commands
+   if args == "abort" or args == "cancel" or args == "0" then
+      HuntTrick.reset()
+      Util.info("Hunt trick cancelled.")
+      return
+   end
+
+   -- Parse index.keyword or just keyword
+   local index, keyword = 1, args
+   if args == "" then
+      -- No args: use current target
+      local target = State.get_target()
+      if not target or not target.keyword or target.keyword == "" then
+         Util.error("Hunt trick: no target. Use xcp to select a target first.")
+         return
+      end
+      keyword = target.keyword
+   else
+      -- Check for N.keyword format
+      local n, kw = string.match(args, "^(%d+)%.(.+)$")
+      if n then
+         index = tonumber(n)
+         keyword = kw
+      end
+   end
+
+   HuntTrick.start(index, keyword)
 end
 
+--- Quick where command handler
+-- Usage: qw (use current target), qw <mob>, qw N.mob, qw abort, qw 0
+-- Tested by: cmd_qw.no_target_error, .uses_current_target, .with_mob_arg,
+--            .with_indexed_arg, .abort, .zero_abort
 function cmd_qw(name, line, wildcards)
-   Util.info("qw: Not yet implemented (Phase 3)")
+   local args = Util.trim(wildcards[1] or "")
+
+   -- Abort commands
+   if args == "abort" or args == "cancel" or args == "0" then
+      QuickWhere.reset()
+      Util.info("Quick where cancelled.")
+      return
+   end
+
+   -- Parse index.keyword or just keyword
+   local index, keyword = 1, args
+   if args == "" then
+      -- No args: use current target
+      local target = State.get_target()
+      if not target or not target.keyword or target.keyword == "" then
+         Util.error("Quick where: no target. Use xcp to select a target first.")
+         return
+      end
+      keyword = target.keyword
+   else
+      -- Check for N.keyword format
+      local n, kw = string.match(args, "^(%d+)%.(.+)$")
+      if n then
+         index = tonumber(n)
+         keyword = kw
+      end
+   end
+
+   QuickWhere.start(index, keyword)
 end
 
 function cmd_qs(name, line, wildcards)
    Util.info("qs: Not yet implemented (Phase 4)")
 end
 
+--- Auto-hunt command handler
+-- Usage: ah (use current target), ah <keyword>, ah abort/cancel/0
+-- Tested by: cmd_ah.cancel_resets, .abort_resets, .zero_resets,
+--            .no_target_error, .uses_current_target, .with_keyword_arg
 function cmd_ah(name, line, wildcards)
-   Util.info("ah: Not yet implemented (Phase 3)")
+   local args = Util.trim(wildcards[1] or "")
+
+   -- Abort commands
+   if args == "abort" or args == "cancel" or args == "0" then
+      AutoHunt.reset()
+      Util.info("Auto-hunt cancelled.")
+      return
+   end
+
+   local keyword = args
+   if args == "" then
+      -- No args: use current target
+      local target = State.get_target()
+      if not target or not target.keyword or target.keyword == "" then
+         Util.error("Auto-hunt: no target. Use xcp to select a target first.")
+         return
+      end
+      keyword = target.keyword
+   end
+
+   AutoHunt.start(keyword)
 end
 
 function cmd_xrt(name, line, wildcards)
@@ -3397,20 +3728,178 @@ function on_gq_quit(name, line, wildcards) end
 function on_gq_not_in(name, line, wildcards) end
 
 -- HUNT TRICK triggers
-function on_ht_direction(name, line, wildcards) end
-function on_ht_here(name, line, wildcards) end
-function on_ht_unable(name, line, wildcards) end
-function on_ht_not_found(name, line, wildcards) end
-function on_ht_abort(name, line, wildcards) end
+
+--- Direction/portal found: increment index and hunt again
+-- Tested by: on_ht_direction.increments_and_hunts
+function on_ht_direction(name, line, wildcards)
+   if not HuntTrick._active then return end
+   HuntTrick._first_target = false
+   local new_index = HuntTrick._index + 1
+   local keyword = HuntTrick._keyword
+   -- Don't call full start() — just update index, send next hunt
+   HuntTrick._index = new_index
+   Send(string.format("hunt %d.%s", new_index, keyword))
+end
+
+--- Mob is here: chain to QW exact to identify the room
+-- Tested by: on_ht_here.chains_to_qw_exact, on_ht_here.no_target_notifies
+function on_ht_here(name, line, wildcards)
+   if not HuntTrick._active then return end
+   local index = HuntTrick._index
+   local keyword = HuntTrick._keyword
+   local auto_go = HuntTrick._auto_go
+   local target = State.get_target()
+   HuntTrick.reset()
+   if target then
+      QuickWhere.start_exact(index, keyword, target.mob, auto_go)
+   else
+      Util.info("Mob is here! (no target set for room lookup)")
+   end
+end
+
+--- Unable to hunt: chain to QW exact (Crowley's ht_complete pattern)
+-- Tested by: on_ht_unable.chains_to_qw_exact, on_ht_unable.no_target_notifies
+function on_ht_unable(name, line, wildcards)
+   if not HuntTrick._active then return end
+   local index = HuntTrick._index
+   local keyword = HuntTrick._keyword
+   local auto_go = HuntTrick._auto_go
+   local target = State.get_target()
+   HuntTrick.reset()
+   if target then
+      QuickWhere.start_exact(index, keyword, target.mob, auto_go)
+   else
+      Util.info("Hunt trick complete. (no target set for room lookup)")
+   end
+end
+
+--- No one in area by that name: fallback to QW if first target, else notify
+-- Tested by: on_ht_not_found.first_target_fallback, .not_first_no_qw
+function on_ht_not_found(name, line, wildcards)
+   if not HuntTrick._active then return end
+   local first = HuntTrick._first_target
+   local keyword = HuntTrick._keyword
+   local auto_go = HuntTrick._auto_go
+   local target = State.get_target()
+   HuntTrick.reset()
+   if first and target then
+      Util.info("Hunt trick failed. Attempting quick where.")
+      QuickWhere.start_exact(1, keyword, target.mob, auto_go)
+   else
+      Util.info("Hunt trick failed.")
+   end
+end
+
+--- Fighting/sitting/resting: abort
+-- Tested by: on_ht_abort.resets
+function on_ht_abort(name, line, wildcards)
+   HuntTrick.reset()
+   Util.info("Hunt trick aborted.")
+end
 
 -- AUTO HUNT triggers
-function on_ah_direction(name, line, wildcards) end
-function on_ah_here(name, line, wildcards) end
-function on_ah_not_found(name, line, wildcards) end
+
+--- Direction found: move in that direction, then hunt again
+-- wildcards[1..5] have direction from each alternation branch (only one is non-false)
+-- Tested by: on_ah_direction.moves_and_hunts, .opens_door, .second_capture_group, .inactive_ignored
+function on_ah_direction(name, line, wildcards)
+   if not AutoHunt._active then return end
+
+   -- Extract direction from first non-false capture group
+   local direction = nil
+   for i = 1, 5 do
+      local w = wildcards[i]
+      if w and w ~= false and w ~= "" then
+         direction = w
+         break
+      end
+   end
+   if not direction then return end
+
+   local short_dir = DIR_MAP[direction] or direction
+   AutoHunt._direction = short_dir
+
+   -- Check GMCP exits: if exit not listed, try opening a door
+   local room = State.get_room()
+   if room and room.exits and not room.exits[short_dir] then
+      Send("open " .. short_dir)
+   end
+
+   -- Move and hunt again
+   Send(short_dir)
+   Send("hunt " .. AutoHunt._keyword)
+end
+
+--- Mob is here: hunt complete
+-- Tested by: on_ah_here.completes
+function on_ah_here(name, line, wildcards)
+   AutoHunt.reset()
+   Util.info("Auto-hunt complete.")
+end
+
+--- Not found or unable to hunt: abort
+-- Tested by: on_ah_not_found.aborts
+function on_ah_not_found(name, line, wildcards)
+   AutoHunt.reset()
+   Util.info("Auto-hunt: mob not found.")
+end
 
 -- QUICK WHERE triggers
-function on_qw_match(name, line, wildcards) end
-function on_qw_no_match(name, line, wildcards) end
+
+--- Where result matched: check if it's our mob, search rooms or retry
+-- wildcards[1] = 30-char padded mob name, wildcards[2] = room name
+-- Tested by: on_qw_match.exact_match_searches_rooms, .keyword_match_searches_rooms,
+--            .no_match_increments, .max_100_stops, .auto_go_navigates, .no_auto_go_displays
+function on_qw_match(name, line, wildcards)
+   if not QuickWhere._active then return end
+   local mob_field = wildcards[1] or ""
+   local room_name = wildcards[2] or ""
+
+   local matched = QuickWhere.check_match(
+      mob_field, QuickWhere._exact, QuickWhere._mob_name, QuickWhere._keyword
+   )
+
+   if not matched then
+      -- Not our mob — increment and retry
+      QuickWhere._index = QuickWhere._index + 1
+      if QuickWhere._index > 100 then
+         Util.info("Quick where: too many retries, stopping.")
+         QuickWhere.reset()
+         return
+      end
+      SendNoEcho(string.format("where %d.%s", QuickWhere._index, QuickWhere._keyword))
+      return
+   end
+
+   -- Match found — search mapper DB for rooms with this name in the area
+   local auto_go = QuickWhere._auto_go
+   local area_key = State._room and State._room.arid or ""
+   QuickWhere.reset()
+
+   if area_key == "" then
+      Util.error("Quick where: cannot search rooms — current area unknown.")
+      return
+   end
+
+   local results = Nav.search_rooms(room_name, area_key)
+   Nav.build_goto_list(results)
+
+   if #Nav._goto_list > 0 then
+      Util.info("Found ", tostring(#Nav._goto_list), " room(s) matching '", room_name, "'")
+      if auto_go then
+         Nav.goto_next()
+      end
+   else
+      Util.info("No rooms found matching '", room_name, "' in ", area_key)
+   end
+end
+
+--- Where found nothing: reset and notify
+-- Tested by: on_qw_no_match.resets
+function on_qw_no_match(name, line, wildcards)
+   QuickWhere.reset()
+   Util.info("Quick where: mob not found in this area.")
+end
 
 -- KILL DETECT triggers
 function on_kill_detect_xp(name, line, wildcards) end

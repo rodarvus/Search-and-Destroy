@@ -7,6 +7,29 @@ if not CONST then
    load_plugin()
 end
 
+--- Create a test fixture mapper DB with known rooms
+local mapper_db_path = "/tmp/test_data/Aardwolf.db"
+
+local function create_mapper_fixture()
+   os.execute("mkdir -p /tmp/test_data")
+   -- Remove old fixture
+   os.remove(mapper_db_path)
+   local db = require("lsqlite3").open(mapper_db_path)
+   db:exec([[
+      CREATE TABLE IF NOT EXISTS rooms (
+         uid TEXT NOT NULL PRIMARY KEY,
+         name TEXT,
+         area TEXT
+      );
+      INSERT INTO rooms VALUES ('1254', 'A Dusty Room', 'diatz');
+      INSERT INTO rooms VALUES ('1255', 'A Dark Corridor', 'diatz');
+      INSERT INTO rooms VALUES ('1260', 'A Dusty Room', 'diatz');
+      INSERT INTO rooms VALUES ('5000', 'The Town Square', 'aylor');
+      INSERT INTO rooms VALUES ('5001', 'A Dusty Room', 'aylor');
+   ]])
+   db:close()
+end
+
 function setUp()
    mock.reset()
    mock.reset_db()
@@ -18,10 +41,12 @@ function setUp()
    Nav._on_arrive = nil
    Nav._vidblain_dest = nil
    State._room = {rmid = -1, arid = "", name = "", exits = {}, maze = false}
+   create_mapper_fixture()
 end
 
 function tearDown()
    mock.reset_db()
+   os.remove(mapper_db_path)
 end
 
 ------------------------------------------------------------------------
@@ -260,4 +285,134 @@ run_test("Nav.goto_next_empty_list", function()
    Nav._goto_index = 0
    Nav.goto_next()
    assert_equal(0, Nav._goto_index, "index stays at 0 for empty list")
+end)
+
+------------------------------------------------------------------------
+-- Nav.mapper_db_path
+------------------------------------------------------------------------
+
+--- Test: mapper_db_path returns expected path
+-- Expected: GetInfo(66) .. "Aardwolf.db" = "/tmp/test_data/Aardwolf.db"
+-- Covers: Nav.mapper_db_path()
+run_test("Nav.mapper_db_path", function()
+   local path = Nav.mapper_db_path()
+   assert_equal("/tmp/test_data/Aardwolf.db", path, "mapper DB path from GetInfo(66)")
+end)
+
+------------------------------------------------------------------------
+-- Nav.search_rooms
+------------------------------------------------------------------------
+
+--- Test: search_rooms finds rooms matching name and area
+-- Setup: mapper fixture has 2 rooms named "A Dusty Room" in diatz
+-- Input: room_name="A Dusty Room", area_key="diatz"
+-- Expected: returns 2 results with uid 1254 and 1260
+-- Covers: Nav.search_rooms() basic match
+run_test("Nav.search_rooms_found", function()
+   local results = Nav.search_rooms("A Dusty Room", "diatz")
+   assert_equal(2, #results, "found 2 rooms")
+   -- Check both UIDs present (order may vary)
+   local uids = {}
+   for _, r in ipairs(results) do uids[r.uid] = true end
+   assert_true(uids["1254"], "found room 1254")
+   assert_true(uids["1260"], "found room 1260")
+end)
+
+--- Test: search_rooms returns empty for nonexistent room name
+-- Input: room_name="Nonexistent Chamber", area_key="diatz"
+-- Expected: empty table
+-- Covers: Nav.search_rooms() no match
+run_test("Nav.search_rooms_no_match", function()
+   local results = Nav.search_rooms("Nonexistent Chamber", "diatz")
+   assert_equal(0, #results, "no results for nonexistent room")
+end)
+
+--- Test: search_rooms returns empty when room exists in different area
+-- Setup: "A Dusty Room" exists in diatz and aylor but not "wooble"
+-- Input: room_name="A Dusty Room", area_key="wooble"
+-- Expected: empty table
+-- Covers: Nav.search_rooms() area filtering
+run_test("Nav.search_rooms_wrong_area", function()
+   local results = Nav.search_rooms("A Dusty Room", "wooble")
+   assert_equal(0, #results, "no results for wrong area")
+end)
+
+--- Test: search_rooms result structure has uid and name
+-- Input: room_name="The Town Square", area_key="aylor"
+-- Expected: 1 result with uid="5000", name="The Town Square"
+-- Covers: Nav.search_rooms() result fields
+run_test("Nav.search_rooms_result_fields", function()
+   local results = Nav.search_rooms("The Town Square", "aylor")
+   assert_equal(1, #results, "found 1 room")
+   assert_equal("5000", results[1].uid, "uid is string from DB")
+   assert_equal("The Town Square", results[1].name, "name preserved")
+end)
+
+--- Test: search_rooms handles nil/empty args gracefully
+-- Input: nil room_name
+-- Expected: empty table, no crash
+-- Covers: Nav.search_rooms() nil guard
+run_test("Nav.search_rooms_nil_args", function()
+   local results = Nav.search_rooms(nil, "diatz")
+   assert_equal(0, #results, "empty for nil room_name")
+end)
+
+--- Test: search_rooms handles missing mapper DB gracefully
+-- Setup: remove mapper DB file
+-- Input: valid room_name and area_key
+-- Expected: empty table, no crash
+-- Covers: Nav.search_rooms() DB open failure
+run_test("Nav.search_rooms_no_db", function()
+   os.remove(mapper_db_path)
+   local results = Nav.search_rooms("A Dusty Room", "diatz")
+   assert_equal(0, #results, "empty when mapper DB missing")
+end)
+
+------------------------------------------------------------------------
+-- Nav.build_goto_list
+------------------------------------------------------------------------
+
+--- Test: build_goto_list populates goto_list from search results
+-- Input: 3 results with uid fields
+-- Expected: goto_list = {1254, 1260, 5001}, goto_index = 0
+-- Covers: Nav.build_goto_list()
+run_test("Nav.build_goto_list_basic", function()
+   local results = {
+      {uid = "1254", name = "A Dusty Room"},
+      {uid = "1260", name = "A Dusty Room"},
+      {uid = "5001", name = "A Dusty Room"},
+   }
+   Nav.build_goto_list(results)
+   assert_equal(3, #Nav._goto_list, "3 rooms in list")
+   assert_equal(1254, Nav._goto_list[1], "first room uid as number")
+   assert_equal(1260, Nav._goto_list[2], "second room uid as number")
+   assert_equal(0, Nav._goto_index, "index starts at 0")
+end)
+
+--- Test: build_goto_list with empty results clears the list
+-- Input: empty results
+-- Expected: goto_list = {}, goto_index = 0
+-- Covers: Nav.build_goto_list() empty input
+run_test("Nav.build_goto_list_empty", function()
+   Nav._goto_list = {111, 222}
+   Nav._goto_index = 2
+   Nav.build_goto_list({})
+   assert_equal(0, #Nav._goto_list, "list cleared")
+   assert_equal(0, Nav._goto_index, "index reset to 0")
+end)
+
+--- Test: build_goto_list skips invalid UIDs (non-numeric)
+-- Input: results with one invalid uid
+-- Expected: only valid UIDs in list
+-- Covers: Nav.build_goto_list() sanitization
+run_test("Nav.build_goto_list_skips_invalid", function()
+   local results = {
+      {uid = "1254", name = "A Room"},
+      {uid = "nomap", name = "Unmappable"},
+      {uid = "1260", name = "Another Room"},
+   }
+   Nav.build_goto_list(results)
+   assert_equal(2, #Nav._goto_list, "skipped non-numeric uid")
+   assert_equal(1254, Nav._goto_list[1], "first valid room")
+   assert_equal(1260, Nav._goto_list[2], "second valid room")
 end)

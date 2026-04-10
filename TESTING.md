@@ -16,6 +16,7 @@ This project follows strict Test-Driven Development:
 - **lrexlib-pcre 8.39** — PCRE regex validation matching MUSHclient's trigger flavor
 - **Tests run standalone** outside MUSHclient: `lua tests/test_runner.lua`
 - **Temp DB** created at `/tmp/test_plugins/Search_and_Destroy.db` (cleaned between tests)
+- **Mapper DB fixture** at `/tmp/test_data/Aardwolf.db` (created/destroyed per test file)
 
 ## Test Infrastructure
 
@@ -26,25 +27,28 @@ This project follows strict Test-Driven Development:
 | `tests/load_plugin.lua` | Extracts Lua from XML CDATA, loads into global environment |
 | `tests/test_data.lua` | Verified game output samples: CP info/check, GQ events, hunt, consider, damage, quest |
 
-## Test Suite Summary (542 tests across 11 files)
+## Test Suite Summary (758 tests across 14 files)
 
 | File | Tests | Module | Coverage |
 |------|-------|--------|----------|
-| test_util.lua | 6 | Util | fixsql, trim, split, strip_colours, ellipsify, round |
-| test_config.lua | 9 | Config | defaults, load/save, set/get, roundtrip |
-| test_db.lua | 21 | DB | schema, seeding, CRUD, transactions, injection prevention, find_mob |
-| test_mob_keyword.lua | 12 | MobKeyword | basic guessing, punctuation, exceptions, area filters, hyphens, edge cases |
-| test_noexp.lua | 16 | Noexp | init, check_tnl boundaries, set, level 200+, exact cutoff, CP interaction |
-| test_state.lua | 33 | State + CP | room/char updates, activity transitions, CP start/clear/info/check/events, noexp-CP |
-| test_target_list.lua | 20 | TargetList | detect_type, resolve_area_key, build, sort, get_alive, find_by_mob, clear |
-| test_triggers.lua | 41 | Trigger regex | PCRE validation for all 48 XML triggers against verified game output |
-| test_nav.lua | 18 | Nav | goto_area, goto_room, Vidblain, fuzzy_match, arrival detection, goto_next |
-| test_commands.lua | 27 | Commands | cmd_xcp, cmd_go, cmd_nx, cmd_xrt, cmd_kk, cmd_xset, CP.do_info/do_check |
-| test_cp_workflow.lua | 15 | Integration | Full CP lifecycle: request → info → check → select → kill → refresh → complete |
+| test_util.lua | 30 | Util | fixsql, trim, split, strip_colours, ellipsify, round |
+| test_config.lua | 25 | Config | defaults, load/save, set/get, roundtrip |
+| test_db.lua | 48 | DB | schema, seeding, CRUD, transactions, injection prevention, find_mob |
+| test_mob_keyword.lua | 53 | MobKeyword | basic guessing, punctuation, exceptions, area filters, hyphens, edge cases |
+| test_noexp.lua | 28 | Noexp | init, check_tnl boundaries, set, level 200+, exact cutoff, CP interaction |
+| test_state.lua | 56 | State + CP | room/char updates, activity transitions, CP start/clear/info/check/events, noexp-CP |
+| test_target_list.lua | 41 | TargetList | detect_type, resolve_area_key, build, sort, get_alive, find_by_mob, clear |
+| test_triggers.lua | 125 | Trigger regex | PCRE validation for all 48 XML triggers against verified game output |
+| test_nav.lua | 28 | Nav | goto_area, goto_room, Vidblain, fuzzy_match, arrival detection, goto_next, search_rooms, build_goto_list |
+| test_commands.lua | 40 | Commands | cmd_xcp (list/select/pickup/bounds/dead/unknown/ht-arrive/qw-arrive/off), cmd_go, cmd_nx, cmd_xrt, cmd_kk, cmd_xset, CP.do_info/do_check |
+| test_cp_workflow.lua | 19 | Integration | Full CP lifecycle + Phase 3 hunting tool chains (HT→QW, QW direct, HT here→QW, HT fallback) |
+| test_hunt_trick.lua | 23 | HuntTrick | start (basic/indexed/no-prefix/resets/no_hunt/trigger-group), reset, is_active, direction (inactive/increments), here (chains QW/no target), unable (chains QW/no target), not_found (fallback/no fallback), abort, cmd_ht (no target/target/arg/indexed/abort/zero) |
+| test_quick_where.lua | 27 | QuickWhere | start (basic/indexed/no-prefix/resets/trigger-group), start_exact (basic/auto_go), reset, check_match (exact pos/neg/long, keyword pos/neg/multi), on_qw_match (exact/keyword/retry/max100/auto_go/no_auto_go), on_qw_no_match, cmd_qw (no target/target/arg/indexed/abort/zero) |
+| test_auto_hunt.lua | 15 | AutoHunt | start (basic/resets/trigger-group), reset, direction (move+hunt/door/2nd-group/inactive), here, not_found, cmd_ah (cancel/abort/zero/no target/target/arg) |
 
 ## Testing Matrix: Functions vs Tests
 
-### Fully tested (automated)
+### Phase 1: Foundation
 
 | Function | Test(s) |
 |----------|---------|
@@ -79,6 +83,12 @@ This project follows strict Test-Driven Development:
 | State.set_target | State.set_target |
 | State.clear_target | State.clear_target |
 | State.broadcast_full | State.broadcast_full |
+| All 48 trigger patterns | test_triggers.lua (PCRE validation) |
+
+### Phase 2: Campaign Pipeline
+
+| Function | Test(s) |
+|----------|---------|
 | CP.start | CP.start, CP.start_double_call_guard, CP.start_noexp_already_off |
 | CP.do_info | CP.do_info.enables_triggers_and_sends |
 | CP.do_check | CP.do_check.cooldown_guard, CP.do_check.sends_when_ready |
@@ -102,14 +112,47 @@ This project follows strict Test-Driven Development:
 | Nav.goto_next | 3 tests (basic, at_end, empty_list) |
 | Nav.on_room_change | 4 tests (area arrival, not arrived, room arrival, no dest) |
 | Nav.fuzzy_match_area | 4 tests (exact, partial, ft2, no match) |
-| cmd_xcp | 6 tests (list display, numeric, not_on_cp, bounds, dead skip, unknown) |
+| cmd_xcp | 9 tests (list/select/pickup/bounds/dead/unknown/ht-arrive/qw-arrive/off) |
 | cmd_go | 4 tests (navigate, default, empty, area string) |
 | cmd_nx | 3 tests (advance, end, empty) |
 | cmd_xrt | 4 tests (navigate, fuzzy, no_arg, unknown) |
 | cmd_kk | 2 tests (sends command, no target) |
 | cmd_xset | 2 tests (set value, invalid key) + 3 kw tests |
-| All 48 trigger patterns | test_triggers.lua (PCRE validation) |
 | Full CP workflow | 15 integration scenarios |
+
+### Phase 3: Hunting Tools
+
+| Function | Test(s) |
+|----------|---------|
+| Nav.mapper_db_path | Nav.mapper_db_path |
+| Nav.search_rooms | 6 tests (found, no_match, wrong_area, result_fields, nil_args, no_db) |
+| Nav.build_goto_list | 3 tests (basic, empty, skips_invalid) |
+| HuntTrick.start | 5 tests (basic/indexed/no-prefix/resets-others/no_hunt + trigger group) |
+| HuntTrick.reset | HuntTrick.reset_clears_state |
+| HuntTrick.is_active | HuntTrick.is_active |
+| on_ht_direction | 2 tests (inactive_ignored, increments_and_hunts) |
+| on_ht_here | 2 tests (chains_to_qw_exact, no_target_notifies) |
+| on_ht_unable | 2 tests (chains_to_qw_exact, no_target_notifies) |
+| on_ht_not_found | 2 tests (first_target_fallback, not_first_no_qw) |
+| on_ht_abort | on_ht_abort.resets |
+| cmd_ht | 6 tests (no_target/target/arg/indexed/abort/zero) |
+| QuickWhere.start | 4 tests (basic/indexed/no-prefix/resets + trigger group) |
+| QuickWhere.start_exact | 2 tests (basic, auto_go) |
+| QuickWhere.reset | QuickWhere.reset_clears_state |
+| QuickWhere.check_match | 6 tests (exact pos/neg/long, keyword pos/neg/multi) |
+| on_qw_match | 6 tests (exact/keyword/retry/max100/auto_go/no_auto_go) |
+| on_qw_no_match | on_qw_no_match.resets |
+| cmd_qw | 6 tests (no_target/target/arg/indexed/abort/zero) |
+| AutoHunt.start | 2 tests (basic/resets + trigger group) |
+| AutoHunt.reset | AutoHunt.reset_clears_state |
+| on_ah_direction | 4 tests (move+hunt/door/2nd-group/inactive) |
+| on_ah_here | on_ah_here.completes |
+| on_ah_not_found | on_ah_not_found.aborts |
+| cmd_ah | 6 tests (cancel/abort/zero/no_target/target/arg) |
+| Integration: xcp→HT→QW | workflow.xcp_ht_to_qw_chain |
+| Integration: xcp→QW | workflow.xcp_qw_direct |
+| Integration: HT here→QW | workflow.ht_here_chains_qw |
+| Integration: HT fallback→QW | workflow.ht_not_found_fallback_qw |
 
 ### Tested indirectly (through other tests)
 
@@ -141,6 +184,9 @@ This project follows strict Test-Driven Development:
 | Room-based CP room cycling | Mapper room queries + go/nx workflow |
 | Noexp game command effect | "noexp" toggle confirmation from game |
 | Reconnect/plugin reload recovery | MUSHclient session lifecycle |
+| Hunt trick trigger timing | Trigger group enable/disable with real game output |
+| Auto-hunt door opening | Real door detection via GMCP exits |
+| Quick where mob matching | 30-char field alignment with live game output |
 
 ---
 
@@ -170,7 +216,7 @@ This project follows strict Test-Driven Development:
 
 | # | Test | Steps | Expected |
 |---|------|-------|----------|
-| 2.1 | CP auto-detection | Type `cp` to request a new campaign | "Congratulations" banner, S&D detects "Good luck" trigger, sends cp info + cp check |
+| 2.1 | CP auto-detection | Type `cp` to request a new campaign | S&D detects "Good luck" trigger, sends cp info + cp check |
 | 2.2 | Target list displayed | Type `xcp` | Target list shown with indices, mob names, areas, keywords, dead status |
 | 2.3 | Correct area detection | Check target list | All targets show correct area keys (not "unknown") |
 | 2.4 | Keyword quality | Compare displayed keywords to `xtest keyword <mob> <area>` | Keywords match, look reasonable |
@@ -181,67 +227,97 @@ This project follows strict Test-Driven Development:
 | 2.9 | Kill CP mob | Kill a campaign target mob | "Congratulations, that was one of your CAMPAIGN mobs!" triggers refresh |
 | 2.10 | Auto-advance after kill | After kill, type `xcp` | Killed target marked dead, next alive target auto-selected |
 | 2.11 | kk works | With target selected, type `kk` | Sends kill command with keyword |
-| 2.12 | CP complete | Kill all CP mobs | "CONGRATULATIONS!" trigger fires, CP state cleared, `xcp` shows "not on campaign" |
-| 2.13 | New CP available | After CP complete, verify game says "You may now take..." | S&D detects, `xtest state` shows ready |
+| 2.12 | CP complete | Kill all CP mobs | "CONGRATULATIONS!" trigger fires, CP state cleared |
+| 2.13 | New CP available | After CP complete, verify game says "You may now take..." | S&D detects |
 
-### Phase 3: Noexp Interaction
-
-| # | Test | Steps | Expected |
-|---|------|-------|----------|
-| 3.1 | Configure noexp | `xset noexp_tnl_cutoff 500` | Setting saved |
-| 3.2 | Noexp activates | Kill mobs until TNL < 500 (while NOT on CP) | "Turning noexp ON" message, `noexp` command sent |
-| 3.3 | CP start turns noexp off | Request a new CP | "Turning noexp OFF (campaign started)" |
-| 3.4 | Noexp stays off during CP | Kill mobs during CP (TNL may drop below cutoff) | Noexp stays OFF, no auto-toggle |
-| 3.5 | CP complete re-evaluates | Complete CP, check if TNL still < cutoff | Noexp turns ON again if TNL < cutoff and no CP |
-| 3.6 | Must level turns noexp off | If game says "You must level..." | "Turning noexp OFF (must level)" |
-
-### Phase 4: xset kw (Keyword Override)
+### Phase 3: Hunting Tools
 
 | # | Test | Steps | Expected |
 |---|------|-------|----------|
-| 4.1 | Override keyword | With target selected, `xset kw newkeyword` | Keyword updated, confirmed message |
-| 4.2 | kk uses new keyword | Type `kk` | Sends kill command with "newkeyword" |
-| 4.3 | Override persists after refresh | Kill a different mob, list refreshes | Overridden keyword still present |
-| 4.4 | xset kw (no arg) shows current | Type `xset kw` | Shows current keyword for target |
+| 3.1 | HT with xcp arrival | `xset xcp_action_mode ht`, then `xcp 1` | Navigate to area, on arrival HT starts ("hunt keyword" sent) |
+| 3.2 | HT cycling | Observe HT output | "hunt 2.keyword", "hunt 3.keyword", etc. as direction messages come back |
+| 3.3 | HT → QW chain | Let HT run until "unable to hunt" | QW exact mode starts automatically at last index |
+| 3.4 | QW room search | Observe QW match | "Found N room(s)" message, mapper navigate starts (auto_go) |
+| 3.5 | QW with xcp arrival | `xset xcp_action_mode qw`, then `xcp 1` | Navigate to area, on arrival QW exact starts |
+| 3.6 | Manual ht | With target, type `ht` | HT starts with current target keyword |
+| 3.7 | Manual ht with arg | Type `ht guard` | HT starts with "guard" keyword |
+| 3.8 | Manual qw | With target, type `qw` | QW starts in keyword mode |
+| 3.9 | Manual qw exact | With target, type `qw` after HT unable | QW matches exact mob name |
+| 3.10 | Auto-hunt | Type `ah` with target | AH sends "hunt keyword", follows directions |
+| 3.11 | AH door handling | AH encounters closed door | "open dir" sent before movement |
+| 3.12 | AH abort | Type `ah abort` during AH | AH stops, notification shown |
+| 3.13 | HT abort | Type `ht 0` during HT | HT stops, notification shown |
+| 3.14 | QW abort | Type `qw abort` during QW | QW stops, notification shown |
+| 3.15 | Re-entrant safety | Start HT, then type `qw` | HT resets, QW starts (no overlap) |
+| 3.16 | go after QW match | After QW finds rooms, type `go` or `go 2` | Navigate to room in goto_list |
+| 3.17 | nx after go | After `go`, type `nx` | Advance to next room in list |
 
-### Phase 5: Edge Cases & Error Handling
-
-| # | Test | Steps | Expected |
-|---|------|-------|----------|
-| 5.1 | xcp when not on CP | Type `xcp` without CP | Error: "You are not on a campaign" |
-| 5.2 | xcp out of bounds | With CP active, `xcp 999` | Error: "Invalid index" |
-| 5.3 | xrt unknown area | `xrt zzzzz` | Error: "Unknown area" |
-| 5.4 | xrt no arg | `xrt` (no arg) | Error: "Usage: xrt <area>" |
-| 5.5 | kk no target | Type `kk` without target | Error: "No target set" |
-| 5.6 | go empty list | Type `go 1` without prior xcp | Error: "No room list" |
-| 5.7 | Plugin reload mid-CP | Disable + re-enable plugin during CP | Plugin reloads, CP state partially recovered via persisted level |
-| 5.8 | CP cleared by user | `cp quit` during active CP | S&D detects "Campaign cleared", state reset |
-
-### Phase 6: Vidblain Navigation (if accessible)
-
-| # | Test | Steps | Expected |
-|---|------|-------|----------|
-| 6.1 | Navigate to Vidblain area | `xrt asherodan` (or other Vidblain area) | Goes to portal room 11910, enters hole, then navigates to area |
-| 6.2 | Already in Vidblain | From within Vidblain, `xrt imperial` | Direct navigation (no portal) |
-
-### Phase 7: Coexistence
+### Phase 4: Noexp Interaction
 
 | # | Test | Steps | Expected |
 |---|------|-------|----------|
-| 7.1 | leveldb still works | Kill mobs during CP | leveldb records kills, no errors |
-| 7.2 | Mapper still works | Navigate via mapper | Mapper speedwalk works, S&D triggers fire with `keep_evaluating` |
-| 7.3 | No trigger conflicts | Complete a full CP | No "trigger already exists" errors, no missing callbacks |
+| 4.1 | Configure noexp | `xset noexp_tnl_cutoff 500` | Setting saved |
+| 4.2 | Noexp activates | Kill mobs until TNL < 500 (while NOT on CP) | "Turning noexp ON" message, `noexp` command sent |
+| 4.3 | CP start turns noexp off | Request a new CP | "Turning noexp OFF (campaign started)" |
+| 4.4 | Noexp stays off during CP | Kill mobs during CP (TNL may drop below cutoff) | Noexp stays OFF, no auto-toggle |
+| 4.5 | CP complete re-evaluates | Complete CP, check if TNL still < cutoff | Noexp turns ON again if TNL < cutoff and no CP |
+| 4.6 | Must level turns noexp off | If game says "You must level..." | "Turning noexp OFF (must level)" |
+
+### Phase 5: xset kw (Keyword Override)
+
+| # | Test | Steps | Expected |
+|---|------|-------|----------|
+| 5.1 | Override keyword | With target selected, `xset kw newkeyword` | Keyword updated, confirmed message |
+| 5.2 | kk uses new keyword | Type `kk` | Sends kill command with "newkeyword" |
+| 5.3 | Override persists after refresh | Kill a different mob, list refreshes | Overridden keyword still present |
+| 5.4 | xset kw (no arg) shows current | Type `xset kw` | Shows current keyword for target |
+
+### Phase 6: Edge Cases & Error Handling
+
+| # | Test | Steps | Expected |
+|---|------|-------|----------|
+| 6.1 | xcp when not on CP | Type `xcp` without CP | Error: "You are not on a campaign" |
+| 6.2 | xcp out of bounds | With CP active, `xcp 999` | Error: "Invalid index" |
+| 6.3 | xrt unknown area | `xrt zzzzz` | Error: "Unknown area" |
+| 6.4 | xrt no arg | `xrt` (no arg) | Error: "Usage: xrt <area>" |
+| 6.5 | kk no target | Type `kk` without target | Error: "No target set" |
+| 6.6 | go empty list | Type `go 1` without prior xcp | Error: "No room list" |
+| 6.7 | ht no target | Type `ht` without target | Error: "no target" |
+| 6.8 | qw no target | Type `qw` without target | Error: "no target" |
+| 6.9 | ah no target | Type `ah` without target | Error: "no target" |
+| 6.10 | Plugin reload mid-CP | Disable + re-enable plugin during CP | Plugin reloads, CP state partially recovered |
+| 6.11 | CP cleared by user | `cp quit` during active CP | S&D detects "Campaign cleared", state reset |
+
+### Phase 7: Vidblain Navigation (if accessible)
+
+| # | Test | Steps | Expected |
+|---|------|-------|----------|
+| 7.1 | Navigate to Vidblain area | `xrt asherodan` (or other Vidblain area) | Goes to portal room 11910, enters hole, then navigates to area |
+| 7.2 | Already in Vidblain | From within Vidblain, `xrt imperial` | Direct navigation (no portal) |
+
+### Phase 8: Coexistence
+
+| # | Test | Steps | Expected |
+|---|------|-------|----------|
+| 8.1 | leveldb still works | Kill mobs during CP | leveldb records kills, no errors |
+| 8.2 | Mapper still works | Navigate via mapper | Mapper speedwalk works, S&D triggers fire with `keep_evaluating` |
+| 8.3 | No trigger conflicts | Complete a full CP | No "trigger already exists" errors, no missing callbacks |
 
 ---
 
-## Known Limitations (not testable in Phase 2)
+## Known Limitations (Phase 4+)
 
-- **Room-based CP go/nx cycling** — Nav._goto_list not populated from mapper queries yet
+- **SmartScan (qs)** — stub, not implemented (Phase 4)
+- **Quest module** — GMCP comm.quest handler is debug stub (Phase 4)
+- **GQ workflow** — all GQ triggers/callbacks are stubs (Phase 5)
+- **GUI miniwindow** — not started (Phase 6)
+- **Auto-hunt step limiting** — WinkleGold feature, deferred
+- **Auto-hunt confidence filter** — WinkleGold feature, deferred
+- **QW mob frequency sorting** — room results not sorted by seen_count yet
+- **QW lookup_not_found_mob** — no SnD DB fallback when where finds nothing
 - **sohtwo area** — "The School of Horror" name shared between soh and sohtwo, level filtering not implemented
-- **GQ workflow** — all GQ triggers are stubs (Phase 5)
-- **Hunt trick / quick where / smart scan** — stubs (Phase 3/4)
-- **Reconnect full recovery** — CP level persisted but full reconnect flow not implemented
 - **DamageTracker** — deferred, kill identification uses server cp check response
+- **Reconnect full recovery** — CP level persisted but full reconnect flow not implemented
 
 ## Running the Automated Suite
 
@@ -250,6 +326,6 @@ cd Search-and-Destroy
 lua tests/test_runner.lua
 ```
 
-Expected: `542/542 passed, 0 failed`
+Expected: `758/758 passed, 0 failed`
 
 The pre-commit hook runs this automatically on every `git commit`.

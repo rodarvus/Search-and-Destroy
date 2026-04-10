@@ -44,6 +44,21 @@ function setUp()
    Noexp._auto_enabled = true
    Noexp._noexp_on = false
    Noexp._tnl_cutoff = 500
+   -- Reset hunting modules
+   HuntTrick._index = 1
+   HuntTrick._keyword = ""
+   HuntTrick._active = false
+   HuntTrick._first_target = true
+   HuntTrick._auto_go = false
+   QuickWhere._index = 1
+   QuickWhere._keyword = ""
+   QuickWhere._mob_name = ""
+   QuickWhere._exact = false
+   QuickWhere._active = false
+   QuickWhere._auto_go = false
+   AutoHunt._keyword = ""
+   AutoHunt._direction = ""
+   AutoHunt._active = false
 end
 
 function tearDown()
@@ -480,4 +495,155 @@ run_test("workflow.xcp_picks_up_existing_cp", function()
    -- Target list should be built
    assert_equal(2, TargetList.count(), "target list built with 2 targets")
    assert_equal(2, #TargetList.get_alive(), "both targets alive")
+end)
+
+------------------------------------------------------------------------
+-- Phase 3: Hunting tool integration workflows
+------------------------------------------------------------------------
+
+--- Helper: set up a CP with targets and create mapper DB fixture
+local mapper_db_path = "/tmp/test_data/Aardwolf.db"
+
+local function setup_cp_with_mapper()
+   -- Create mapper DB fixture
+   os.execute("mkdir -p /tmp/test_data")
+   os.remove(mapper_db_path)
+   local db = require("lsqlite3").open(mapper_db_path)
+   db:exec([[
+      CREATE TABLE IF NOT EXISTS rooms (
+         uid TEXT NOT NULL PRIMARY KEY,
+         name TEXT,
+         area TEXT
+      );
+      INSERT INTO rooms VALUES ('1254', 'A Dusty Room', 'diatz');
+      INSERT INTO rooms VALUES ('1260', 'A Narrow Passage', 'diatz');
+   ]])
+   db:close()
+
+   -- Simulate CP with targets
+   CP._on_cp = true
+   CP._type = "area"
+   CP._level = 45
+   State._activity = "cp"
+   local check_list = {
+      {mob = "a sinister vandal", location = "The Three Pillars of Diatz", dead = false},
+      {mob = "a mutated goat", location = "The Killing Fields", dead = false},
+   }
+   TargetList.build(check_list, "area", 45)
+end
+
+--- Test: Full flow: xcp → arrive → HT cycles → unable → QW exact → match → goto_list
+-- Simulates the complete HT→QW chain from selecting a target
+-- Covers: cmd_xcp → HuntTrick.start → on_ht_direction → on_ht_unable → QuickWhere.start_exact → on_qw_match
+run_test("workflow.xcp_ht_to_qw_chain", function()
+   setup_cp_with_mapper()
+   mock.variables["snd_xcp_action_mode"] = "ht"
+   Config.load()
+
+   -- Select target 1
+   cmd_xcp(nil, nil, {[1] = "1"})
+   local target = State.get_target()
+   assert_true(target ~= nil, "target selected")
+
+   -- Simulate area arrival
+   assert_true(Nav._on_arrive ~= nil, "on_arrive set")
+   Nav._on_arrive()
+   assert_true(HuntTrick._active, "HT started on arrival")
+   assert_equal(1, HuntTrick._index, "HT at index 1")
+
+   -- Simulate HT direction found (mob is north)
+   on_ht_direction("trg_ht_direction", "You are certain that a sinister vandal is north from here.",
+      {"north", false, false, false, false})
+   assert_equal(2, HuntTrick._index, "HT advanced to index 2")
+
+   -- Simulate HT direction again
+   on_ht_direction("trg_ht_direction", "You are certain that a sinister vandal is east from here.",
+      {"east", false, false, false, false})
+   assert_equal(3, HuntTrick._index, "HT advanced to index 3")
+
+   -- Simulate HT unable (all instances exhausted)
+   State._room = {rmid = 1254, arid = "diatz", name = "A Room", exits = {}, maze = false}
+   on_ht_unable("trg_ht_unable", "You seem unable to hunt that target for some reason.", {})
+   assert_false(HuntTrick._active, "HT reset after unable")
+   assert_true(QuickWhere._active, "QW started after HT unable")
+   assert_true(QuickWhere._exact, "QW in exact mode")
+   assert_equal(3, QuickWhere._index, "QW at HT's last index")
+   assert_true(QuickWhere._auto_go, "QW has auto_go from HT")
+
+   -- Simulate QW match
+   on_qw_match("trg_qw_match", "a sinister vandal              A Dusty Room",
+      {"a sinister vandal             ", "A Dusty Room"})
+   assert_false(QuickWhere._active, "QW reset after match")
+   assert_true(#Nav._goto_list > 0, "goto_list populated from mapper DB")
+
+   os.remove(mapper_db_path)
+end)
+
+--- Test: Full flow: xcp → arrive → QW → match → goto_list built with auto_go
+-- Covers: cmd_xcp → QuickWhere.start_exact → on_qw_match → Nav.build_goto_list
+run_test("workflow.xcp_qw_direct", function()
+   setup_cp_with_mapper()
+   mock.variables["snd_xcp_action_mode"] = "qw"
+   Config.load()
+
+   -- Select target 1
+   cmd_xcp(nil, nil, {[1] = "1"})
+   local target = State.get_target()
+   assert_true(target ~= nil, "target selected")
+
+   -- Simulate area arrival
+   Nav._on_arrive()
+   assert_true(QuickWhere._active, "QW started on arrival")
+   assert_true(QuickWhere._exact, "QW in exact mode")
+   assert_true(QuickWhere._auto_go, "QW with auto_go")
+
+   -- Simulate QW match
+   State._room = {rmid = 1254, arid = "diatz", name = "A Room", exits = {}, maze = false}
+   on_qw_match("trg_qw_match", "a sinister vandal              A Dusty Room",
+      {"a sinister vandal             ", "A Dusty Room"})
+   assert_false(QuickWhere._active, "QW reset after match")
+   assert_true(#Nav._goto_list > 0, "goto_list populated")
+   assert_true(Nav._goto_index > 0, "auto_go advanced goto_index")
+
+   os.remove(mapper_db_path)
+end)
+
+--- Test: HT "here" chains to QW exact to identify room
+-- Covers: on_ht_here → QuickWhere.start_exact
+run_test("workflow.ht_here_chains_qw", function()
+   setup_cp_with_mapper()
+
+   -- Start HT directly
+   State._target = TargetList.get(1)
+   HuntTrick._auto_go = true
+   HuntTrick.start(1, State._target.keyword)
+
+   -- Simulate "here" after some cycling
+   HuntTrick._index = 5
+   State._room = {rmid = 1254, arid = "diatz", name = "A Room", exits = {}, maze = false}
+   on_ht_here("trg_ht_here", "A sinister vandal is here!", {})
+   assert_false(HuntTrick._active, "HT reset")
+   assert_true(QuickWhere._active, "QW started from 'here'")
+   assert_true(QuickWhere._exact, "QW in exact mode")
+   assert_equal(5, QuickWhere._index, "QW at HT's index")
+
+   os.remove(mapper_db_path)
+end)
+
+--- Test: HT not_found on first target falls back to QW
+-- Covers: on_ht_not_found first_target → QuickWhere.start_exact
+run_test("workflow.ht_not_found_fallback_qw", function()
+   setup_cp_with_mapper()
+
+   State._target = TargetList.get(1)
+   HuntTrick._auto_go = true
+   HuntTrick.start(1, State._target.keyword)
+   assert_true(HuntTrick._first_target, "first_target is true")
+
+   on_ht_not_found("trg_ht_not_found", "No one in this area by the name 'sinister'.", {})
+   assert_false(HuntTrick._active, "HT reset")
+   assert_true(QuickWhere._active, "QW started as fallback")
+   assert_true(QuickWhere._exact, "QW in exact mode")
+
+   os.remove(mapper_db_path)
 end)
