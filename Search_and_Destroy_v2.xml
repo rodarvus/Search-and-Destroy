@@ -613,46 +613,46 @@ Based on Crowley's and WinkleGold's Search and Destroy plugins.
 
    <!-- ==================== SCAN/ROOMCHARS TAG MARKERS (Item A1) ==================== -->
    <!-- Aardwolf emits these markers when `tags scan on` / `tags roomchars on` is active.
-        They bracket scan/roomchars output for plugin parsing. We always-on gag the markers
-        themselves; Phase 4 SmartScan parsing will hang content triggers on _start callbacks. -->
+        Match Crowley's pattern verbatim: regexp="n" (literal whole-line match), sequence 50.
+        Anchored PCRE patterns ("^\{roomchars\}$") didn't fire reliably in MUSHclient. -->
    <trigger name="trg_scan_start"
-      match="^\{scan\}$"
+      match="{scan}"
       enabled="y"
-      regexp="y"
+      regexp="n"
       omit_from_output="y"
       script="on_scan_start"
       group="grp_scan_markers"
-      sequence="100"
+      sequence="50"
    ></trigger>
 
    <trigger name="trg_scan_end"
-      match="^\{/scan\}$"
+      match="{/scan}"
       enabled="y"
-      regexp="y"
+      regexp="n"
       omit_from_output="y"
       script="on_scan_end"
       group="grp_scan_markers"
-      sequence="100"
+      sequence="50"
    ></trigger>
 
    <trigger name="trg_roomchars_start"
-      match="^\{roomchars\}$"
+      match="{roomchars}"
       enabled="y"
-      regexp="y"
+      regexp="n"
       omit_from_output="y"
       script="on_roomchars_start"
       group="grp_scan_markers"
-      sequence="100"
+      sequence="50"
    ></trigger>
 
    <trigger name="trg_roomchars_end"
-      match="^\{/roomchars\}$"
+      match="{/roomchars}"
       enabled="y"
-      regexp="y"
+      regexp="n"
       omit_from_output="y"
       script="on_roomchars_end"
       group="grp_scan_markers"
-      sequence="100"
+      sequence="50"
    ></trigger>
 
    <trigger name="trg_tag_option_scan_on"

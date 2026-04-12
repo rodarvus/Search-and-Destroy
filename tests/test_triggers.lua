@@ -488,33 +488,12 @@ end)
 
 ------------------------------------------------------------------------
 -- Phase 4 / Item A: SmartScan tag-marker gag triggers
--- These markers are emitted by Aardwolf when `tags scan on` / `tags roomchars on`
--- is active. Without gag triggers the markers bleed to the player.
+-- The {scan}/{/scan}/{roomchars}/{/roomchars} markers use regexp="n"
+-- (literal whole-line match) in the XML — Crowley's pattern. Anchored
+-- PCRE patterns didn't fire reliably in MUSHclient. Literal matches
+-- aren't testable via rex_pcre, so they're verified in-game only.
+-- The "Tag option ... turned ON" gag triggers still use PCRE; tests below.
 ------------------------------------------------------------------------
-
-run_test("trg_scan_start", function()
-   local pat = [[^\{scan\}$]]
-   assert_not_nil(pcre_find(pat, "{scan}"), "matches scan-start marker")
-   assert_nil(pcre_find(pat, "{scan} extra"), "no trailing text")
-   assert_nil(pcre_find(pat, "prefix {scan}"), "no leading text")
-end)
-
-run_test("trg_scan_end", function()
-   local pat = [[^\{/scan\}$]]
-   assert_not_nil(pcre_find(pat, "{/scan}"), "matches scan-end marker")
-   assert_nil(pcre_find(pat, "{/scan} extra"), "no trailing text")
-end)
-
-run_test("trg_roomchars_start", function()
-   local pat = [[^\{roomchars\}$]]
-   assert_not_nil(pcre_find(pat, "{roomchars}"), "matches roomchars-start marker")
-   assert_nil(pcre_find(pat, "{roomchars} extra"), "no trailing text")
-end)
-
-run_test("trg_roomchars_end", function()
-   local pat = [[^\{/roomchars\}$]]
-   assert_not_nil(pcre_find(pat, "{/roomchars}"), "matches roomchars-end marker")
-end)
 
 run_test("trg_tag_option_scan_on", function()
    local pat = [[^Tag option scan turned ON$]]
