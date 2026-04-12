@@ -27,10 +27,12 @@ This project follows strict Test-Driven Development:
 | `tests/load_plugin.lua` | Extracts Lua from XML CDATA, loads into global environment |
 | `tests/test_data.lua` | Verified game output samples: CP info/check, GQ events, hunt, consider, damage, quest |
 
-## Test Suite Summary (774 assertions across 14 files)
+## Test Suite Summary (934 assertions across 16 files)
 
 | File | Module | Coverage |
 |------|--------|----------|
+| test_display.lua | Display | tag_for_mob CP/GQ/quest match, area filtering, case-insensitivity, activity guard, unknown-area target |
+| test_smart_scan.lua | SmartScan | parse_flags, is_player, scan accumulator (current/nearby rooms with distance), mob/door/empty parsing, roomchars counting, consider re-render with tags + difficulty colors, render_scan with overwrite on/off, cmd_qs (smart/filtered/plain), auto-con fallback, DB persistence |
 | test_util.lua | Util | fixsql, trim, split, strip_colours, ellipsify, round |
 | test_config.lua | Config | defaults, load/save, set/get, roundtrip |
 | test_db.lua | DB | schema, seeding, CRUD, transactions, injection prevention, find_mob |
@@ -252,6 +254,21 @@ This project follows strict Test-Driven Development:
 | 3.16 | xcp re-select cancels HT | xcp 1, then xcp 2 mid-flight | HT for target 1 cancelled, HT for target 2 starts |
 | 3.17 | Cold mid-CP pickup | Load plugin mid-campaign, type `xcp` | `cp info` + `cp check` chain runs, target list auto-displays once |
 
+### Phase 4: SmartScan / Item A (in-game test)
+
+| # | Test | Steps | Expected |
+|---|------|-------|----------|
+| A.1 | Tag markers no longer bleed | Manually type `scan` | No `{scan}` / `{/scan}` markers visible. No "Tag option ..." confirmation lines. |
+| A.2 | Plain `qs` with no target | No CP/GQ active, no target, type `qs` | Plain scan output, current + nearby rooms shown. |
+| A.3 | `qs` with target, no activity | Set target via `xcp` after CP complete (or just have a target), type `qs` | Filtered scan: `scan <keyword>` sent, only that mob shown across rooms. |
+| A.4 | `qs` smart-scan during CP | On CP with target, type `qs` | Full scan; target mob shown with `[CP]` prefix in gold/magenta; if some mobs noscan, auto-`con` fires and target tagged again. |
+| A.5 | Consider re-render | After `qs` triggers auto-con, observe consider lines | Each consider line replaced with `[CP] mob (level range)` in difficulty color (cornflowerblue → red gradient). Non-target mobs suppressed during con-after-scan. |
+| A.6 | Manual `con all` | Type `con all` directly | Each consider line re-rendered with mob in silver + level range in difficulty color; `[CP]` prefix when on target list. |
+| A.7 | `xset display_overwrite off` | Set, then `qs` and `con all` | Markers still gagged, but lines pass through with native game colors (no tags, no re-render). |
+| A.8 | `xset display_overwrite on` | Set back to default | Re-render returns. |
+| A.9 | DB persistence | Run `qs` in a new room with mobs, then later `xcp` for one of those mobs | DB-first xcp flow finds the room (no `where` discovery needed). |
+| A.10 | Multiple rooms scanned | Scan in a busy zone | Each "Right here" / "1 North from here you see:" / "2 East from here you see:" block rendered with its mobs; 1-3 distance handled. |
+
 ### Phase 4: Noexp Interaction
 
 | # | Test | Steps | Expected |
@@ -326,6 +343,6 @@ cd Search-and-Destroy
 lua tests/test_runner.lua
 ```
 
-Expected: `774/774 passed, 0 failed`
+Expected: `934/934 passed, 0 failed`
 
 The pre-commit hook runs this automatically on every `git commit`.

@@ -485,3 +485,185 @@ run_test("trg_noexp_powerup", function()
    local pups = pcre_match(pat, TestData.powerup)
    assert_equal("5", pups, "captures powerup count")
 end)
+
+------------------------------------------------------------------------
+-- Phase 4 / Item A: SmartScan tag-marker gag triggers
+-- These markers are emitted by Aardwolf when `tags scan on` / `tags roomchars on`
+-- is active. Without gag triggers the markers bleed to the player.
+------------------------------------------------------------------------
+
+run_test("trg_scan_start", function()
+   local pat = [[^\{scan\}$]]
+   assert_not_nil(pcre_find(pat, "{scan}"), "matches scan-start marker")
+   assert_nil(pcre_find(pat, "{scan} extra"), "no trailing text")
+   assert_nil(pcre_find(pat, "prefix {scan}"), "no leading text")
+end)
+
+run_test("trg_scan_end", function()
+   local pat = [[^\{/scan\}$]]
+   assert_not_nil(pcre_find(pat, "{/scan}"), "matches scan-end marker")
+   assert_nil(pcre_find(pat, "{/scan} extra"), "no trailing text")
+end)
+
+run_test("trg_roomchars_start", function()
+   local pat = [[^\{roomchars\}$]]
+   assert_not_nil(pcre_find(pat, "{roomchars}"), "matches roomchars-start marker")
+   assert_nil(pcre_find(pat, "{roomchars} extra"), "no trailing text")
+end)
+
+run_test("trg_roomchars_end", function()
+   local pat = [[^\{/roomchars\}$]]
+   assert_not_nil(pcre_find(pat, "{/roomchars}"), "matches roomchars-end marker")
+end)
+
+run_test("trg_tag_option_scan_on", function()
+   local pat = [[^Tag option scan turned ON$]]
+   assert_not_nil(pcre_find(pat, "Tag option scan turned ON"), "matches confirmation")
+   assert_nil(pcre_find(pat, "Tag option scan turned OFF"), "doesn't match OFF")
+end)
+
+run_test("trg_tag_option_roomchars_on", function()
+   local pat = [[^Tag option roomchars turned ON$]]
+   assert_not_nil(pcre_find(pat, "Tag option roomchars turned ON"), "matches confirmation")
+end)
+
+------------------------------------------------------------------------
+-- Phase 4 / Item A2: Scan-content trigger regexes
+------------------------------------------------------------------------
+
+run_test("trg_scan_room_current", function()
+   local pat = [[^Right here you see:$]]
+   assert_not_nil(pcre_find(pat, "Right here you see:"), "matches current-room header")
+   assert_nil(pcre_find(pat, "Right here you see something"), "rejects partial match")
+end)
+
+run_test("trg_scan_room_nearby", function()
+   local pat = [[^(\d )?(North|East|South|West|Up|Down) from here you see:$]]
+   -- All 6 cardinals, no distance (distance 1 is implicit when no prefix)
+   for _, dir in ipairs({"North", "East", "South", "West", "Up", "Down"}) do
+      assert_not_nil(pcre_find(pat, dir .. " from here you see:"), dir .. " no-distance matches")
+   end
+   -- With distance prefix
+   local dist, dir = pcre_match(pat, "2 North from here you see:")
+   assert_equal("2 ", dist, "captures distance prefix")
+   assert_equal("North", dir, "captures direction")
+   -- 3 rooms deep
+   dist = pcre_match(pat, "3 East from here you see:")
+   assert_equal("3 ", dist, "distance 3 captured")
+   -- Negative
+   assert_nil(pcre_find(pat, "Northeast from here you see:"), "diagonal direction not supported")
+end)
+
+run_test("trg_scan_mob", function()
+   local pat = [[^[ ]{5}-((?:\s?\[AFK\]|\s?\([^\)]+\))*)\s+(.+)$]]
+   -- Plain mob (no flags)
+   local flags, mob = pcre_match(pat, "     - an old woman")
+   assert_equal("", flags, "no flags captured")
+   assert_equal("an old woman", mob, "mob captured")
+   -- Single flag
+   flags, mob = pcre_match(pat, "     - (Old) the ancient wizard")
+   assert_equal(" (Old)", flags, "single flag captured with leading space")
+   assert_equal("the ancient wizard", mob, "mob after flags captured")
+   -- Multiple flags
+   flags, mob = pcre_match(pat, "     - (Old) (Hidden) a sneaky thing")
+   assert_equal(" (Old) (Hidden)", flags, "two flags captured")
+   assert_equal("a sneaky thing", mob, "mob after multiple flags")
+   -- AFK marker
+   flags, mob = pcre_match(pat, "     - [AFK] (P) bob")
+   assert_equal(" [AFK] (P)", flags, "AFK + player flag captured")
+   assert_equal("bob", mob, "player name captured")
+   -- Negative: wrong indent
+   assert_nil(pcre_find(pat, "    - an old woman"), "4 spaces doesn't match (need 5)")
+   assert_nil(pcre_find(pat, "      - an old woman"), "6 spaces doesn't match")
+   assert_nil(pcre_find(pat, "an old woman"), "no indent doesn't match")
+end)
+
+run_test("trg_scan_door", function()
+   local pat = [[^You see .+\.$]]
+   assert_not_nil(pcre_find(pat, "You see a closed door north."), "door line matches")
+   assert_not_nil(pcre_find(pat, "You see something here."), "feature line matches")
+   assert_nil(pcre_find(pat, "You see a door"), "needs trailing period")
+end)
+
+run_test("trg_scan_empty", function()
+   local pat = [[^Nothing to see around here, might as well move on\.$]]
+   assert_not_nil(pcre_find(pat, "Nothing to see around here, might as well move on."), "empty matches")
+   assert_nil(pcre_find(pat, "Nothing to see around here"), "partial doesn't match")
+end)
+
+run_test("trg_roomchars_line", function()
+   -- Catch-all per-line trigger (only enabled inside {roomchars}/{/roomchars})
+   local pat = [[^.+$]]
+   assert_not_nil(pcre_find(pat, "any non-empty line"), "matches any line with content")
+   assert_nil(pcre_find(pat, ""), "rejects empty line")
+end)
+
+------------------------------------------------------------------------
+-- Phase 4 / Item A3: Consider trigger regexes (13 outcomes)
+-- Patterns from Crowley's CONSIDER_OUTCOMES (Search_and_Destroy.xml:8998)
+------------------------------------------------------------------------
+
+run_test("trg_con_1_stomp", function()
+   local pat = [[^You would stomp (.+?) into the ground\.$]]
+   assert_equal("an old woman", pcre_match(pat, "You would stomp an old woman into the ground."), "captures mob")
+end)
+
+run_test("trg_con_2_easy", function()
+   local pat = [[^(.+?) would be easy, but is it even worth the work out\?$]]
+   assert_equal("the goblin", pcre_match(pat, "the goblin would be easy, but is it even worth the work out?"), "captures mob")
+end)
+
+run_test("trg_con_3_no_problem", function()
+   local pat = [[^No Problem! (.+?) is weak compared to you\.$]]
+   assert_equal("a wolf", pcre_match(pat, "No Problem! a wolf is weak compared to you."), "captures mob")
+end)
+
+run_test("trg_con_4_worried", function()
+   local pat = [[^(.+?) looks a little worried about the idea\.$]]
+   assert_equal("the troll", pcre_match(pat, "the troll looks a little worried about the idea."), "captures mob")
+end)
+
+run_test("trg_con_5_fair_fight", function()
+   local pat = [[^(.+?) should be a fair fight!$]]
+   assert_equal("a knight", pcre_match(pat, "a knight should be a fair fight!"), "captures mob")
+end)
+
+run_test("trg_con_6_snickers", function()
+   local pat = [[^(.+?) snickers nervously\.$]]
+   assert_equal("the dragon", pcre_match(pat, "the dragon snickers nervously."), "captures mob")
+end)
+
+run_test("trg_con_7_chuckles", function()
+   local pat = [[^(.+?) chuckles at the thought of you fighting \S+\.$]]
+   assert_equal("the demon", pcre_match(pat, "the demon chuckles at the thought of you fighting them."), "captures mob")
+end)
+
+run_test("trg_con_8_run_away", function()
+   local pat = [[^Best run away from (.+?) while you can!$]]
+   assert_equal("a giant", pcre_match(pat, "Best run away from a giant while you can!"), "captures mob")
+end)
+
+run_test("trg_con_9_brave_or_stupid", function()
+   local pat = [[^Challenging (.+?) would be either very brave or very stupid\.$]]
+   assert_equal("the boss", pcre_match(pat, "Challenging the boss would be either very brave or very stupid."), "captures mob")
+end)
+
+run_test("trg_con_10_crush", function()
+   local pat = [[^(.+?) would crush you like a bug!$]]
+   assert_equal("the titan", pcre_match(pat, "the titan would crush you like a bug!"), "captures mob")
+end)
+
+run_test("trg_con_11_dance", function()
+   local pat = [[^(.+?) would dance on your grave!$]]
+   assert_equal("the lich", pcre_match(pat, "the lich would dance on your grave!"), "captures mob")
+end)
+
+run_test("trg_con_12_begone", function()
+   local pat = [[^(.+?) says 'BEGONE FROM MY SIGHT unworthy\!'$]]
+   assert_equal("the deity", pcre_match(pat, "the deity says 'BEGONE FROM MY SIGHT unworthy!'"), "captures mob")
+end)
+
+run_test("trg_con_13_annihilated", function()
+   local pat = [[^You would be completely annihilated by (.+?)!$]]
+   assert_equal("the avatar", pcre_match(pat, "You would be completely annihilated by the avatar!"), "captures mob")
+end)

@@ -20,12 +20,12 @@ The goal is to combine the strengths of both into a cleaner, more maintainable, 
 | 1 | Foundation | **Complete** | 220 |
 | 2 | Campaign Pipeline | **Complete** | 569 |
 | 3 | Hunting Tools | **Complete + in-game tested** | 774 |
-| 4 | Smart Features | Not started | - |
+| 4 | Smart Features | **Item A (SmartScan) complete** | 934 |
 | 5 | GQ Support | Not started | - |
 | 6 | GUI Plugin | Not started | - |
 | 7 | Polish | Not started | - |
 
-**Total: 774/774 tests passing.**
+**Total: 934/934 tests passing.**
 
 ## Project Plan
 
@@ -69,15 +69,15 @@ Finding mobs within an area, then a redesign based on live testing:
 - **Bug fixes from live testing** - rmid type coercion (Aardwolf GMCP can deliver `room.info.num` as a string, breaking numeric comparisons), cold mid-CP pickup auto-displays the target list (no more typing `xcp` twice), search_rooms ordering (was undefined order — `nx` was non-deterministic).
 - **Deep review** - Bug fixes, test gap fills, documentation headers, TESTING.md rewrite
 
-### Phase 4: Smart Features
+### Phase 4: Smart Features (in progress)
 
 Intelligence and automation:
 
-- **SmartScan** - Scan + consider combo, mob difficulty assessment using 13 difficulty patterns
-- **Noexp** - Extended TNL tracking and GMCP config.noexp integration
-- **Quest** - GMCP comm.quest handler, quest timer countdown, quest targeting
-- PK room warnings
-- Wire up `qs` command
+- **SmartScan (Item A — complete)** - Tags `{scan}`/`{/scan}`/`{roomchars}` markers gagged. Scan output parsed into per-room blocks (current room + nearby up to 3 rooms deep × 6 directions). 13 consider triggers re-render with [CP]/[GQ] tags + difficulty colors (matches Crowley exactly). `qs` command: smart-scan on activity (with auto-`con` fallback for noscan/hidden mobs), filtered scan when targeted out-of-activity, plain scan otherwise. Scanned mobs persist to S&D mobs DB so the Phase 3 DB-first `xcp` flow grows over time. New `Display` module hosts the tag helper. New `display_overwrite` config setting (default `on`) toggles re-rendering.
+- **B (planned)** - [CP]/[GQ]/[Q] tag prefix in live `where` output (reuses Display.tag_for_mob).
+- **C (planned)** - Quest module: GMCP comm.quest handler, auto-target on quest start, 1-min timer warning, `xq` alias.
+- **D (planned)** - PK room visual warning (re-color room name on entry).
+- **E (planned)** - Noexp gaps (GMCP config.noexp integration).
 
 ### Phase 5: GQ Support
 

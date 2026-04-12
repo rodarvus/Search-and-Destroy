@@ -611,6 +611,253 @@ Based on Crowley's and WinkleGold's Search and Destroy plugins.
       sequence="10"
    ></trigger>
 
+   <!-- ==================== SCAN/ROOMCHARS TAG MARKERS (Item A1) ==================== -->
+   <!-- Aardwolf emits these markers when `tags scan on` / `tags roomchars on` is active.
+        They bracket scan/roomchars output for plugin parsing. We always-on gag the markers
+        themselves; Phase 4 SmartScan parsing will hang content triggers on _start callbacks. -->
+   <trigger name="trg_scan_start"
+      match="^\{scan\}$"
+      enabled="y"
+      regexp="y"
+      omit_from_output="y"
+      script="on_scan_start"
+      group="grp_scan_markers"
+      sequence="100"
+   ></trigger>
+
+   <trigger name="trg_scan_end"
+      match="^\{/scan\}$"
+      enabled="y"
+      regexp="y"
+      omit_from_output="y"
+      script="on_scan_end"
+      group="grp_scan_markers"
+      sequence="100"
+   ></trigger>
+
+   <trigger name="trg_roomchars_start"
+      match="^\{roomchars\}$"
+      enabled="y"
+      regexp="y"
+      omit_from_output="y"
+      script="on_roomchars_start"
+      group="grp_scan_markers"
+      sequence="100"
+   ></trigger>
+
+   <trigger name="trg_roomchars_end"
+      match="^\{/roomchars\}$"
+      enabled="y"
+      regexp="y"
+      omit_from_output="y"
+      script="on_roomchars_end"
+      group="grp_scan_markers"
+      sequence="100"
+   ></trigger>
+
+   <trigger name="trg_tag_option_scan_on"
+      match="^Tag option scan turned ON$"
+      enabled="y"
+      regexp="y"
+      omit_from_output="y"
+      group="grp_scan_markers"
+      sequence="100"
+   ></trigger>
+
+   <trigger name="trg_tag_option_roomchars_on"
+      match="^Tag option roomchars turned ON$"
+      enabled="y"
+      regexp="y"
+      omit_from_output="y"
+      group="grp_scan_markers"
+      sequence="100"
+   ></trigger>
+
+   <!-- ==================== SCAN CONTENT (Item A2, disabled by default) ==================== -->
+   <!-- Enabled by on_scan_start, disabled by on_scan_end. Each trigger gags its line and
+        accumulates into SmartScan._scan_full_display so the renderer can re-emit at end. -->
+   <trigger name="trg_scan_room_current"
+      match="^Right here you see:$"
+      enabled="n"
+      regexp="y"
+      omit_from_output="y"
+      script="on_scan_room_current"
+      group="grp_scan"
+      sequence="100"
+   ></trigger>
+
+   <trigger name="trg_scan_room_nearby"
+      match="^(\d )?(North|East|South|West|Up|Down) from here you see:$"
+      enabled="n"
+      regexp="y"
+      omit_from_output="y"
+      script="on_scan_room_nearby"
+      group="grp_scan"
+      sequence="100"
+   ></trigger>
+
+   <trigger name="trg_scan_mob"
+      match="^[ ]{5}-((?:\s?\[AFK\]|\s?\([^\)]+\))*)\s+(.+)$"
+      enabled="n"
+      regexp="y"
+      omit_from_output="y"
+      script="on_scan_mob"
+      group="grp_scan"
+      sequence="100"
+   ></trigger>
+
+   <trigger name="trg_scan_door"
+      match="^You see .+\.$"
+      enabled="n"
+      regexp="y"
+      omit_from_output="y"
+      script="on_scan_door"
+      group="grp_scan"
+      sequence="100"
+   ></trigger>
+
+   <trigger name="trg_scan_empty"
+      match="^Nothing to see around here, might as well move on\.$"
+      enabled="n"
+      regexp="y"
+      omit_from_output="y"
+      script="on_scan_empty"
+      group="grp_scan"
+      sequence="100"
+   ></trigger>
+
+   <!-- ==================== ROOMCHARS CONTENT (Item A2, disabled by default) ==================== -->
+   <trigger name="trg_roomchars_line"
+      match="^.+$"
+      enabled="n"
+      regexp="y"
+      omit_from_output="y"
+      script="on_roomchars_line"
+      group="grp_roomchars"
+      sequence="100"
+   ></trigger>
+
+   <!-- ==================== CONSIDER (Item A3, always on) ====================
+        13 consider outcomes from Crowley's CONSIDER_OUTCOMES (Search_and_Destroy.xml:8998).
+        Patterns capture mob name; level range + colour come from CON_DETAILS table. -->
+   <trigger name="trg_con_1"
+      match="^You would stomp (.+?) into the ground\.$"
+      enabled="y"
+      regexp="y"
+      omit_from_output="y"
+      script="on_consider_mob"
+      group="grp_consider"
+      sequence="100"
+   ></trigger>
+   <trigger name="trg_con_2"
+      match="^(.+?) would be easy, but is it even worth the work out\?$"
+      enabled="y"
+      regexp="y"
+      omit_from_output="y"
+      script="on_consider_mob"
+      group="grp_consider"
+      sequence="100"
+   ></trigger>
+   <trigger name="trg_con_3"
+      match="^No Problem! (.+?) is weak compared to you\.$"
+      enabled="y"
+      regexp="y"
+      omit_from_output="y"
+      script="on_consider_mob"
+      group="grp_consider"
+      sequence="100"
+   ></trigger>
+   <trigger name="trg_con_4"
+      match="^(.+?) looks a little worried about the idea\.$"
+      enabled="y"
+      regexp="y"
+      omit_from_output="y"
+      script="on_consider_mob"
+      group="grp_consider"
+      sequence="100"
+   ></trigger>
+   <trigger name="trg_con_5"
+      match="^(.+?) should be a fair fight!$"
+      enabled="y"
+      regexp="y"
+      omit_from_output="y"
+      script="on_consider_mob"
+      group="grp_consider"
+      sequence="100"
+   ></trigger>
+   <trigger name="trg_con_6"
+      match="^(.+?) snickers nervously\.$"
+      enabled="y"
+      regexp="y"
+      omit_from_output="y"
+      script="on_consider_mob"
+      group="grp_consider"
+      sequence="100"
+   ></trigger>
+   <trigger name="trg_con_7"
+      match="^(.+?) chuckles at the thought of you fighting \S+\.$"
+      enabled="y"
+      regexp="y"
+      omit_from_output="y"
+      script="on_consider_mob"
+      group="grp_consider"
+      sequence="100"
+   ></trigger>
+   <trigger name="trg_con_8"
+      match="^Best run away from (.+?) while you can!$"
+      enabled="y"
+      regexp="y"
+      omit_from_output="y"
+      script="on_consider_mob"
+      group="grp_consider"
+      sequence="100"
+   ></trigger>
+   <trigger name="trg_con_9"
+      match="^Challenging (.+?) would be either very brave or very stupid\.$"
+      enabled="y"
+      regexp="y"
+      omit_from_output="y"
+      script="on_consider_mob"
+      group="grp_consider"
+      sequence="100"
+   ></trigger>
+   <trigger name="trg_con_10"
+      match="^(.+?) would crush you like a bug!$"
+      enabled="y"
+      regexp="y"
+      omit_from_output="y"
+      script="on_consider_mob"
+      group="grp_consider"
+      sequence="100"
+   ></trigger>
+   <trigger name="trg_con_11"
+      match="^(.+?) would dance on your grave!$"
+      enabled="y"
+      regexp="y"
+      omit_from_output="y"
+      script="on_consider_mob"
+      group="grp_consider"
+      sequence="100"
+   ></trigger>
+   <trigger name="trg_con_12"
+      match="^(.+?) says &#39;BEGONE FROM MY SIGHT unworthy\!&#39;$"
+      enabled="y"
+      regexp="y"
+      omit_from_output="y"
+      script="on_consider_mob"
+      group="grp_consider"
+      sequence="100"
+   ></trigger>
+   <trigger name="trg_con_13"
+      match="^You would be completely annihilated by (.+?)!$"
+      enabled="y"
+      regexp="y"
+      omit_from_output="y"
+      script="on_consider_mob"
+      group="grp_consider"
+      sequence="100"
+   ></trigger>
+
 </triggers>
 
 <!-- ============================================================ -->
@@ -1624,6 +1871,8 @@ Config._defaults = {
    -- Action modes
    nx_action          = "smartscan", -- smartscan, qs, or qw
    quick_kill_command = "k",
+   -- Display
+   display_overwrite  = "on",      -- re-render scan/consider with tags + difficulty colors
    -- Auto-features
    noexp_auto         = "on",
    noexp_tnl_cutoff   = "0",
@@ -3004,11 +3253,159 @@ function QuickWhere.check_match(mob_field, exact, mob_name, keyword)
 end
 
 ------------------------------------------------------------------------
--- SmartScan: Scan + consider (stub - Phase 4)
+-- Display: Output rendering helpers (tags, colors, re-rendering)
+-- Phase 4 / Item A4: tag_for_mob is the foundation for re-rendered scan,
+-- consider, and live `where` output. Caller decides how to render the tag
+-- (ColourTell loop typically).
+------------------------------------------------------------------------
+Display = {}
+
+--- Render an accumulated scan display: per-room headers + tagged mob lines + doors
+-- @param blocks SmartScan._scan_full_display — list of {header, mobs, doors}
+-- Side effects: emits Note/ColourTell/ColourNote for each block.
+--   When display_overwrite is "off": just Note each line plainly.
+--   When "on" (default): re-emit mob lines with [CP]/[GQ] tag prefix when matched.
+-- Notes:
+--   - Tag replaces the leading 5-space indent so column width stays similar.
+--   - Doors and headers render as-is.
+--   - Empty rooms (no mobs, no doors) are skipped to reduce noise.
+-- Tested by: Display.render_scan_with_tags, _without_tags, _empty_blocks_skipped,
+--   _overwrite_off_passthrough, _doors_rendered
+function Display.render_scan(blocks)
+   if not blocks or #blocks == 0 then return end
+   local overwrite = Config.get("display_overwrite") == "on"
+
+   for _, block in ipairs(blocks) do
+      if (block.mobs and #block.mobs > 0) or (block.doors and #block.doors > 0) then
+         Note(block.header)
+         for _, mob_entry in ipairs(block.mobs or {}) do
+            if overwrite then
+               local tags = Display.tag_for_mob(mob_entry.mob)
+               if #tags > 0 then
+                  -- Replace leading 5-space indent with tag so column lines up
+                  local stripped = string.gsub(mob_entry.line, "^ +%-", "-")
+                  for _, tag in ipairs(tags) do
+                     ColourTell(tag.colour, "", tag.text)
+                  end
+                  Note(stripped)
+               else
+                  Note(mob_entry.line)
+               end
+            else
+               Note(mob_entry.line)
+            end
+         end
+         for _, door in ipairs(block.doors or {}) do
+            Note(door.line)
+         end
+      end
+   end
+end
+
+--- Return the activity tag for a mob, if it matches the active CP/GQ/quest target list
+-- @param mob_name mob name as it appears in scan/consider/where output (case-insensitive)
+-- @return list of {text=string, colour=string} segments, OR empty table if no match.
+--   Format matches Crowley: gold "[", magenta tag letters, gold "] ".
+-- Behavior: matches if mob is on TargetList._main_list AND area matches current room
+--   (or target.area_key is unknown). Empty list when not on any list.
+-- TODO Phase 4 C: also check Quest._target for [Q] tag (quest module not yet built).
+-- Tested by: Display.tag_for_mob_cp_match, _no_match, _wrong_area, _case_insensitive,
+--   _no_activity, _empty_target_list
+function Display.tag_for_mob(mob_name)
+   if not mob_name or mob_name == "" then return {} end
+   local activity = State.get_activity()
+   if activity == "none" or activity == nil then return {} end
+
+   local lower_mob = string.lower(mob_name)
+   local current_area = State._room and State._room.arid or ""
+
+   for _, target in ipairs(TargetList._main_list) do
+      if target.mob and string.lower(target.mob) == lower_mob then
+         local area_match = (target.area_key == current_area) or (target.link_type == "unknown")
+         if area_match then
+            return {
+               {text = "[",                      colour = "gold"},
+               {text = string.upper(activity),   colour = "magenta"},
+               {text = "] ",                     colour = "gold"},
+            }
+         end
+      end
+   end
+
+   return {}
+end
+
+------------------------------------------------------------------------
+-- SmartScan: Scan + consider (Phase 4 / Item A)
 ------------------------------------------------------------------------
 SmartScan = {
-   _scanned_mobs = {},
-   _considered_mobs = {},
+   _scanned_mobs = {},          -- mob names (lowercase) seen in current room scan
+   _considered_mobs = {},       -- mob names from consider output
+   _scan_full_display = {},     -- per-room accumulator: [{header, mobs, doors}, ...]
+   _running_smart_scan = false, -- true when smart-scan auto-flow is active
+   _con_after_scan = false,     -- true when post-scan consider auto-fallback is active
+   _scanning_current_room = false, -- true when currently inside "Right here you see:" block
+   _mob_count_here = 0,         -- count from {roomchars} block
+   _target_found_here = false,  -- set by tag_for_mob during scan render
+   _target_found_nearby = false,-- ditto for non-current rooms
+}
+
+--- Player flag set: scan lines tagged with one of these are players, not mobs
+local SCAN_PLAYER_FLAGS = {
+   ["P"] = true, ["Player"] = true, ["OPK"] = true, ["Linkdead"] = true,
+   ["WANTED"] = true, ["HARDCORE"] = true, ["Raider"] = true, ["Traitor"] = true,
+}
+
+--- Parse a scan flags string into a list of flag tokens (without parens / brackets)
+-- Examples: " (Old) (Hidden)" -> {"Old", "Hidden"}; " [AFK] (P)" -> {"AFK", "P"}; "" -> {}
+-- Tested by: SmartScan.parse_flags_*
+function SmartScan.parse_flags(flags_str)
+   if not flags_str or flags_str == "" then return {} end
+   local result = {}
+   for token in string.gmatch(flags_str, "%[(%w+)%]") do
+      table.insert(result, token)
+   end
+   for token in string.gmatch(flags_str, "%(([^%)]+)%)") do
+      table.insert(result, token)
+   end
+   return result
+end
+
+--- Check if a flags string indicates a player (skip during scan)
+-- Tested by: SmartScan.is_player_*
+function SmartScan.is_player(flags_str)
+   for _, flag in ipairs(SmartScan.parse_flags(flags_str)) do
+      if SCAN_PLAYER_FLAGS[flag] then return true end
+   end
+   return false
+end
+
+--- Reset the scan accumulator (called by on_scan_start)
+function SmartScan.reset()
+   SmartScan._scan_full_display = {}
+   SmartScan._scanned_mobs = {}
+   SmartScan._considered_mobs = {}
+   SmartScan._scanning_current_room = false
+   SmartScan._target_found_here = false
+   SmartScan._target_found_nearby = false
+   SmartScan._con_after_scan = false
+end
+
+--- Difficulty level details for the 13 consider outcomes (Crowley's con_details, S&D.xml:8472)
+SmartScan.CON_DETAILS = {
+   ["trg_con_1"]  = {level_range = "-20 and below", colour = "cornflowerblue"},
+   ["trg_con_2"]  = {level_range = "-10 to -19",    colour = "deepskyblue"},
+   ["trg_con_3"]  = {level_range = "-5 to -9",      colour = "turquoise"},
+   ["trg_con_4"]  = {level_range = "-2 to -4",      colour = "mediumspringgreen"},
+   ["trg_con_5"]  = {level_range = "-1 to +1",      colour = "lime"},
+   ["trg_con_6"]  = {level_range = "+2 to +4",      colour = "lawngreen"},
+   ["trg_con_7"]  = {level_range = "+5 to +9",      colour = "limegreen"},
+   ["trg_con_8"]  = {level_range = "+10 to +15",    colour = "greenyellow"},
+   ["trg_con_9"]  = {level_range = "+16 to +20",    colour = "#EFF22D"},
+   ["trg_con_10"] = {level_range = "+21 to +30",    colour = "gold"},
+   ["trg_con_11"] = {level_range = "+31 to +40",    colour = "darkorange"},
+   ["trg_con_12"] = {level_range = "+41 to +50",    colour = "orangered"},
+   ["trg_con_13"] = {level_range = "+51 and above", colour = "red"},
 }
 
 ------------------------------------------------------------------------
@@ -3573,8 +3970,30 @@ function cmd_qw(name, line, wildcards)
    QuickWhere.start(index, keyword)
 end
 
+--- Quick scan / smart scan command (Phase 4 / Item A5)
+-- Behavior matches Crowley's quick_scan + smart_scan (Search_and_Destroy.xml:3828, 3837):
+--   * On CP/GQ with target → smart-scan: SendNoEcho("scan"), full nearby scan,
+--     auto-fallback to `con` if some mobs were noscan/hidden
+--   * Has target but not on CP/GQ → quick-scan: Send("scan <keyword>"), filtered
+--   * No target → Send("scan"), plain
+-- Tested by: cmd_qs.smart_scan_when_on_activity, cmd_qs.filtered_when_target_no_activity,
+--   cmd_qs.plain_when_no_target
 function cmd_qs(name, line, wildcards)
-   Util.info("qs: Not yet implemented (Phase 4)")
+   local target = State.get_target()
+   local activity = State.get_activity()
+   local on_activity = (activity == "cp" or activity == "gq")
+
+   if target and on_activity then
+      -- Smart-scan path: full scan + auto-con fallback for hidden mobs
+      SmartScan._running_smart_scan = true
+      SendNoEcho("scan")
+   elseif target and target.keyword and target.keyword ~= "" then
+      -- Quick-scan path: filtered scan for the target only
+      Send("scan " .. target.keyword)
+   else
+      -- No target: plain scan
+      Send("scan")
+   end
 end
 
 --- Auto-hunt command handler
@@ -4023,6 +4442,164 @@ function on_kill_detect_xp(name, line, wildcards) end
 -- NOEXP triggers
 function on_noexp_level(name, line, wildcards) end
 function on_noexp_powerup(name, line, wildcards) end
+
+-- SCAN/ROOMCHARS callbacks (Item A2: parse; A5 will add render in on_scan_end)
+
+--- {scan} marker: clear accumulator and enable content triggers
+-- Tested by: on_scan_start.clears_and_enables
+function on_scan_start(name, line, wildcards)
+   SmartScan.reset()
+   EnableTriggerGroup("grp_scan", true)
+end
+
+--- {/scan} marker: disable content triggers, render accumulator,
+-- and (if smart-scan) auto-fallback to `con` for unscanned/noscan mobs.
+-- Tested by: on_scan_end.disables_group, on_scan_end.renders_blocks,
+--   on_scan_end.smart_fallback_to_con, on_scan_end.no_fallback_when_not_smart
+function on_scan_end(name, line, wildcards)
+   EnableTriggerGroup("grp_scan", false)
+
+   Display.render_scan(SmartScan._scan_full_display)
+
+   -- Persist current-room scanned mobs to the SnD mobs DB so the DB-first xcp
+   -- flow (Phase 3) can find them later. Crowley's write_mob_list_to_db.
+   local room = State.get_room()
+   if room and room.rmid and room.rmid > 0 and room.arid and room.arid ~= "" then
+      for _, mob in ipairs(SmartScan._scanned_mobs) do
+         DB.record_mob(mob, room.name or "", room.rmid, room.arid)
+      end
+   end
+
+   -- Smart-scan auto-con fallback: when smart-scan was running and the room had
+   -- more mobs than scan revealed (noscan/hidden), run consider to identify them.
+   if SmartScan._running_smart_scan
+      and SmartScan._mob_count_here > #SmartScan._scanned_mobs then
+      Util.info("Smart-scan: ", tostring(SmartScan._mob_count_here - #SmartScan._scanned_mobs),
+                " unscanned mob(s); running consider...")
+      SmartScan._con_after_scan = true
+      SendNoEcho("con")
+   end
+   SmartScan._running_smart_scan = false
+end
+
+--- {roomchars} marker: reset count and enable line trigger
+-- Tested by: on_roomchars_start.resets_and_enables
+function on_roomchars_start(name, line, wildcards)
+   SmartScan._mob_count_here = 0
+   EnableTriggerGroup("grp_roomchars", true)
+end
+
+--- {/roomchars} marker: disable line trigger
+-- Tested by: on_roomchars_end.disables_group
+function on_roomchars_end(name, line, wildcards)
+   EnableTriggerGroup("grp_roomchars", false)
+end
+
+--- Each line within {roomchars}...{/roomchars} = one mob present
+-- Tested by: on_roomchars_line.increments
+function on_roomchars_line(name, line, wildcards)
+   SmartScan._mob_count_here = SmartScan._mob_count_here + 1
+end
+
+--- "Right here you see:" — start a new room block (current room)
+-- Tested by: on_scan_room_current.starts_block
+function on_scan_room_current(name, line, wildcards)
+   SmartScan._scanning_current_room = true
+   table.insert(SmartScan._scan_full_display, {
+      header = line,
+      distance = 0,
+      direction = "here",
+      mobs = {},
+      doors = {},
+   })
+end
+
+--- "(N )?Direction from here you see:" — start a new room block (nearby)
+-- wildcards[1] = optional "<n> " distance prefix, wildcards[2] = direction
+-- Tested by: on_scan_room_nearby.starts_block, _captures_distance
+function on_scan_room_nearby(name, line, wildcards)
+   SmartScan._scanning_current_room = false
+   local dist_str = wildcards[1] or ""
+   local distance = tonumber(string.match(dist_str, "(%d)")) or 1
+   table.insert(SmartScan._scan_full_display, {
+      header = line,
+      distance = distance,
+      direction = string.lower(wildcards[2] or ""),
+      mobs = {},
+      doors = {},
+   })
+end
+
+--- "     - <flags> <mob>" — accumulate mob into current room (skip players)
+-- wildcards[1] = flags string, wildcards[2] = mob name
+-- Tested by: on_scan_mob.appends, _skips_player_P, _skips_player_word, _no_room_block_safe
+function on_scan_mob(name, line, wildcards)
+   if SmartScan.is_player(wildcards[1] or "") then return end
+   local mob = Util.trim(wildcards[2] or "")
+   if mob == "" then return end
+
+   local block = SmartScan._scan_full_display[#SmartScan._scan_full_display]
+   if not block then return end  -- defensive: mob line before any room header
+
+   table.insert(block.mobs, {flags = wildcards[1] or "", mob = mob, line = line})
+   if SmartScan._scanning_current_room then
+      table.insert(SmartScan._scanned_mobs, string.lower(mob))
+   end
+end
+
+--- "You see ... ." — accumulate door/feature into current room
+-- Tested by: on_scan_door.appends
+function on_scan_door(name, line, wildcards)
+   local block = SmartScan._scan_full_display[#SmartScan._scan_full_display]
+   if not block then return end
+   table.insert(block.doors, {line = line})
+end
+
+--- "Nothing to see around here..." — empty scan (suppressed during smart-scan)
+-- Tested by: on_scan_empty.notes_unless_smart
+function on_scan_empty(name, line, wildcards)
+   if not SmartScan._running_smart_scan then
+      Note(line)
+   end
+end
+
+--- Consider outcome trigger callback — re-render mob line with [CP] tag + difficulty
+-- @param name trigger name (trg_con_1..trg_con_13) used to look up CON_DETAILS
+-- @param wildcards[1] mob name captured by the trigger pattern
+-- Behavior:
+--   - When display_overwrite is "off": re-emit the original line untouched (gag is XML-side)
+--   - When display_overwrite is "on" (default): emit "[CP] mob (level_range)" with colored markup
+-- Tracks mob in SmartScan._considered_mobs (lowercase) for smart-scan dedup.
+-- Tested by: on_consider_mob.renders_with_tag, _no_tag, _overwrite_off_passthrough,
+--   _tracks_in_considered_mobs, _unknown_trigger_safe
+function on_consider_mob(name, line, wildcards)
+   local details = SmartScan.CON_DETAILS[name]
+   if not details then return end  -- defensive: unknown trigger name
+
+   local mob = Util.trim(wildcards[1] or "")
+   if mob == "" then return end
+
+   table.insert(SmartScan._considered_mobs, string.lower(mob))
+
+   local overwrite = Config.get("display_overwrite")
+   if overwrite ~= "on" then
+      Note(line)
+      return
+   end
+
+   local tags = Display.tag_for_mob(mob)
+
+   -- During con_after_scan auto-fallback, only render tagged (target) mobs.
+   -- Non-target mobs were already shown by scan; suppress to avoid spam.
+   if SmartScan._con_after_scan and #tags == 0 then return end
+
+   -- Re-render: [CP] mob (level_range) with mob in silver, level in difficulty colour
+   for _, tag in ipairs(tags) do
+      ColourTell(tag.colour, "", tag.text)
+   end
+   ColourTell("silver", "", mob)
+   ColourNote(details.colour, "", string.format(" (%s)", details.level_range))
+end
 
 ]]>
 </script>
