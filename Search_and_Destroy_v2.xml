@@ -726,12 +726,15 @@ Based on Crowley's and WinkleGold's Search and Destroy plugins.
       sequence="100"
    ></trigger>
 
-   <!-- ==================== ROOMCHARS CONTENT (Item A2, disabled by default) ==================== -->
+   <!-- ==================== ROOMCHARS CONTENT (Item A2, disabled by default) ====================
+        Note: omit_from_output="n" — the lines inside {roomchars}...{/roomchars} are the
+        room's character list, which the player wants to see. We count them silently for
+        smart-scan's noscan-mob detection but do not gag the line content. Crowley's pattern. -->
    <trigger name="trg_roomchars_line"
       match="^.+$"
       enabled="n"
       regexp="y"
-      omit_from_output="y"
+      omit_from_output="n"
       script="on_roomchars_line"
       group="grp_roomchars"
       sequence="100"
