@@ -22,6 +22,7 @@ local function create_mapper_fixture()
       );
       INSERT INTO rooms VALUES ('1254', 'A Dusty Room', 'diatz');
       INSERT INTO rooms VALUES ('1260', 'A Dusty Room', 'diatz');
+      INSERT INTO rooms VALUES ('1300', 'A Unique Hall', 'diatz');
       INSERT INTO rooms VALUES ('5000', 'The Town Square', 'aylor');
    ]])
    db:close()
@@ -109,14 +110,25 @@ run_test("QuickWhere.start_no_1_prefix", function()
    end
 end)
 
---- Test: start resets other tools (re-entrant safety)
--- Covers: QuickWhere.start() re-entrant safety
-run_test("QuickWhere.start_resets_others", function()
+--- Test: QW.start does NOT reset other tools (parallel mode allowed)
+-- Covers: QuickWhere.start() — exclusivity moved to cmd_qw
+run_test("QuickWhere.start_does_not_reset_others", function()
    HuntTrick._active = true
    AutoHunt._active = true
    QuickWhere.start(1, "citizen")
-   assert_false(HuntTrick._active, "HT reset")
-   assert_false(AutoHunt._active, "AH reset")
+   assert_true(HuntTrick._active, "HT NOT reset by QW.start (parallel-safe)")
+   assert_true(AutoHunt._active, "AH NOT reset by QW.start (parallel-safe)")
+end)
+
+--- Test: cmd_qw (manual command) DOES reset other hunting tools
+-- Covers: cmd_qw() exclusivity
+run_test("cmd_qw.resets_others", function()
+   State._target = {keyword = "wolf", mob = "a wolf", area_key = "diatz"}
+   HuntTrick._active = true
+   AutoHunt._active = true
+   cmd_qw(nil, nil, {[1] = ""})
+   assert_false(HuntTrick._active, "HT reset by cmd_qw")
+   assert_false(AutoHunt._active, "AH reset by cmd_qw")
 end)
 
 ------------------------------------------------------------------------
@@ -306,40 +318,38 @@ run_test("on_qw_match.max_100_stops", function()
    assert_false(QuickWhere._active, "QW stopped after max retries")
 end)
 
---- Test: auto_go navigates to first room after match
--- Setup: QW with auto_go=true, match found
--- Expected: Nav.goto_next() called (dest_room set)
--- Covers: on_qw_match() auto_go path
-run_test("on_qw_match.auto_go_navigates", function()
+--- Test: single matching room auto-navigates (regardless of auto_go flag)
+-- Setup: QW match for unique room name → goto_list size 1 → Nav.goto_next() fires
+-- Expected: goto_index advanced
+-- Covers: on_qw_match() auto-navigate-on-1 rule
+run_test("on_qw_match.single_room_auto_navigates", function()
    QuickWhere._active = true
    QuickWhere._exact = true
    QuickWhere._keyword = "citizen"
    QuickWhere._mob_name = "a citizen"
    QuickWhere._index = 1
-   QuickWhere._auto_go = true
    State._room = {rmid = 1254, arid = "diatz", name = "A Room", exits = {}, maze = false}
-   on_qw_match("trg_qw_match", "a citizen                      A Dusty Room",
-      {"a citizen                     ", "A Dusty Room"})
-   -- goto_next should have advanced index and set dest_room
-   assert_true(Nav._goto_index > 0, "goto_index advanced by auto_go")
+   on_qw_match("trg_qw_match", "a citizen                      A Unique Hall",
+      {"a citizen                     ", "A Unique Hall"})
+   assert_equal(1, #Nav._goto_list, "single matching room")
+   assert_equal(1, Nav._goto_index, "auto-navigated to single match")
 end)
 
---- Test: no auto_go just displays results
--- Setup: QW without auto_go
--- Expected: goto_list built but no navigation
--- Covers: on_qw_match() no auto_go
-run_test("on_qw_match.no_auto_go_displays", function()
+--- Test: multiple matching rooms display list, no auto-navigate
+-- Setup: QW match for room name with 2 entries in fixture → wait for user
+-- Expected: goto_list populated, goto_index stays 0
+-- Covers: on_qw_match() multi-room wait behavior
+run_test("on_qw_match.multi_room_no_auto_navigate", function()
    QuickWhere._active = true
    QuickWhere._exact = true
    QuickWhere._keyword = "citizen"
    QuickWhere._mob_name = "a citizen"
    QuickWhere._index = 1
-   QuickWhere._auto_go = false
    State._room = {rmid = 1254, arid = "diatz", name = "A Room", exits = {}, maze = false}
    on_qw_match("trg_qw_match", "a citizen                      A Dusty Room",
       {"a citizen                     ", "A Dusty Room"})
-   assert_true(#Nav._goto_list > 0, "goto_list built")
-   assert_equal(0, Nav._goto_index, "goto_index stays at 0 without auto_go")
+   assert_equal(2, #Nav._goto_list, "two matching rooms in fixture")
+   assert_equal(0, Nav._goto_index, "no auto-navigate when ambiguous")
 end)
 
 ------------------------------------------------------------------------

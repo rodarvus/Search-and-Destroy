@@ -85,16 +85,30 @@ run_test("HuntTrick.start_no_1_prefix", function()
    end
 end)
 
---- Test: start resets other tools (re-entrant safety)
--- Setup: QuickWhere and AutoHunt are active
--- Expected: both reset after HuntTrick.start
--- Covers: HuntTrick.start() re-entrant safety
-run_test("HuntTrick.start_resets_others", function()
+--- Test: HT.start does NOT reset other tools (parallel mode allowed for cmd_xcp)
+-- Setup: QuickWhere active, then HT.start
+-- Expected: QW stays active — exclusivity is now a command-handler responsibility
+-- Why: cmd_xcp runs HT and QW in parallel; HT.start must not clobber QW
+-- Covers: HuntTrick.start() — exclusivity moved to cmd_ht
+run_test("HuntTrick.start_does_not_reset_others", function()
    QuickWhere._active = true
    AutoHunt._active = true
    HuntTrick.start(1, "citizen")
-   assert_false(QuickWhere._active, "QW reset")
-   assert_false(AutoHunt._active, "AH reset")
+   assert_true(QuickWhere._active, "QW NOT reset by HT.start (parallel-safe)")
+   assert_true(AutoHunt._active, "AH NOT reset by HT.start (parallel-safe)")
+end)
+
+--- Test: cmd_ht (manual command) DOES reset other hunting tools
+-- Setup: QW and AH active, target set, cmd_ht with no args
+-- Expected: QW and AH reset before HT starts (exclusive manual mode)
+-- Covers: cmd_ht() exclusivity
+run_test("cmd_ht.resets_others", function()
+   State._target = {keyword = "wolf", mob = "a wolf", area_key = "diatz"}
+   QuickWhere._active = true
+   AutoHunt._active = true
+   cmd_ht(nil, nil, {[1] = ""})
+   assert_false(QuickWhere._active, "QW reset by cmd_ht")
+   assert_false(AutoHunt._active, "AH reset by cmd_ht")
 end)
 
 --- Test: start with no_hunt override shows error and does not send

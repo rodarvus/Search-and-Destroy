@@ -15,11 +15,9 @@ end
 
 --- Test: Config._defaults contains expected default values for all settings
 -- Input: none (reads Config._defaults table directly)
--- Expected: xcp_action_mode="qw", quick_kill_command="k", noexp_auto="on", etc.
+-- Expected: quick_kill_command="k", noexp_auto="on", debug_mode="off", etc.
 -- Covers: Config._defaults
 run_test("Config.defaults", function()
-   assert_not_nil(Config._defaults.xcp_action_mode, "xcp_action_mode has default")
-   assert_equal("qw", Config._defaults.xcp_action_mode, "xcp_action_mode default is qw")
    assert_equal("k", Config._defaults.quick_kill_command, "quick_kill_command default is k")
    assert_equal("on", Config._defaults.noexp_auto, "noexp_auto default is on")
    assert_equal("0", Config._defaults.noexp_tnl_cutoff, "noexp_tnl_cutoff default is 0")
@@ -32,19 +30,19 @@ end)
 -- Covers: Config.load(), Config.get()
 run_test("Config.load", function()
    Config.load()
-   assert_equal("qw", Config.get("xcp_action_mode"), "load uses default for missing variable")
+   assert_equal("k", Config.get("quick_kill_command"), "load uses default for missing variable")
    assert_equal("off", Config.get("debug_mode"), "load uses default for debug_mode")
 end)
 
 --- Test: Config.load reads stored MUSHclient variables over defaults
--- Setup: mock.variables has snd_xcp_action_mode="ht", snd_debug_mode="on"
+-- Setup: mock.variables has snd_quick_kill_command="kill", snd_debug_mode="on"
 -- Expected: Config.get returns stored values, not defaults
 -- Covers: Config.load(), Config.get()
 run_test("Config.load_with_stored", function()
-   mock.variables["snd_xcp_action_mode"] = "ht"
+   mock.variables["snd_quick_kill_command"] = "kill"
    mock.variables["snd_debug_mode"] = "on"
    Config.load()
-   assert_equal("ht", Config.get("xcp_action_mode"), "load uses stored xcp_action_mode")
+   assert_equal("kill", Config.get("quick_kill_command"), "load uses stored quick_kill_command")
    assert_equal("on", Config.get("debug_mode"), "load uses stored debug_mode")
 end)
 
@@ -78,7 +76,7 @@ end)
 -- Expected: returns default value for known key
 -- Covers: Config.get() fallback logic
 run_test("Config.get_default_fallback", function()
-   assert_equal("qw", Config.get("xcp_action_mode"), "get falls back to default")
+   assert_equal("k", Config.get("quick_kill_command"), "get falls back to default")
 end)
 
 --- Test: Config.save writes settings to MUSHclient variables and clears dirty

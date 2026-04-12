@@ -1,6 +1,6 @@
 # Search & Destroy v2
 
-**Status: Work in Progress** - Phase 3 (Hunting Tools) complete. The plugin is functional for campaigns but not yet ready for general use.
+**Status: Work in Progress** - Phase 3 (Hunting Tools) complete and in-game tested. The plugin is functional for campaigns but not yet ready for general use.
 
 ## What is this?
 
@@ -19,13 +19,13 @@ The goal is to combine the strengths of both into a cleaner, more maintainable, 
 |-------|------|--------|-------|
 | 1 | Foundation | **Complete** | 220 |
 | 2 | Campaign Pipeline | **Complete** | 569 |
-| 3 | Hunting Tools | **Complete** | 758 |
+| 3 | Hunting Tools | **Complete + in-game tested** | 774 |
 | 4 | Smart Features | Not started | - |
 | 5 | GQ Support | Not started | - |
 | 6 | GUI Plugin | Not started | - |
 | 7 | Polish | Not started | - |
 
-**Total: 758/758 tests passing.**
+**Total: 774/774 tests passing.**
 
 ## Project Plan
 
@@ -55,16 +55,18 @@ The core gameplay loop — take CP, parse targets, navigate, kill, repeat:
 - **Commands** - `xcp` (list display + target selection), `go`, `nx`, `xrt`, `kk`, `xset kw`
 - **Deep review** - Gap analysis against Crowley/WinkleGold/live DBs, code audit, test review, documentation headers
 
-### Phase 3: Hunting Tools (Complete)
+### Phase 3: Hunting Tools (Complete + in-game tested)
 
-Finding mobs within an area:
+Finding mobs within an area, then a redesign based on live testing:
 
-- **Nav.search_rooms** - Direct Aardwolf.db queries for room lookup by name and area, goto_list building for room navigation
-- **HuntTrick** - Progressive hunt cycling (1.mob, 2.mob, ...) with direction/portal/here/unable handling, auto-chain to QuickWhere on completion, no_hunt override support
-- **QuickWhere** - Where iteration with 30-char exact and keyword matching, mapper DB room search, auto-navigation on match
+- **Nav.search_rooms** - Direct Aardwolf.db queries for room lookup by name and area, deterministic ORDER BY uid, goto_list building for room navigation
+- **HuntTrick** - Progressive hunt cycling (1.mob, 2.mob, ...) with direction/portal/here/unable handling, optional QuickWhere chain (disabled when run in parallel from xcp), no_hunt override support
+- **QuickWhere** - Where iteration with 30-char exact and keyword matching, mapper DB room search, auto-navigation only when exactly one room matches
 - **AutoHunt** - Auto-hunt with direction following, door opening via GMCP exit detection
-- **cmd_xcp integration** - Arrival callback fires HuntTrick or QuickWhere based on `xcp_action_mode` setting
-- **Re-entrant safety** - Starting any hunting tool resets the other two
+- **cmd_xcp redesign (post in-game test)** - Three-path flow: room-based CP (single room), S&D mob history (DB-first, no `where` needed), or discovery via `where` (in-area direct, out-of-area navigate-then-where). HT runs in parallel for additional info, never clobbers the goto_list. Auto-navigates only when there is exactly one candidate room — multiple matches show a list and wait for `go`/`nx`. The `xcp_action_mode` config setting was dropped.
+- **`mapper goto` does its own pathfinding** - The plugin no longer routes through area start rooms; relies on the mapper's shortest-path calculation from anywhere on the MUD.
+- **Cancellation semantics** - `cmd_go`, `cmd_nx`, and `cmd_xcp <new N>` cancel any in-flight HT (user is taking manual control).
+- **Bug fixes from live testing** - rmid type coercion (Aardwolf GMCP can deliver `room.info.num` as a string, breaking numeric comparisons), cold mid-CP pickup auto-displays the target list (no more typing `xcp` twice), search_rooms ordering (was undefined order — `nx` was non-deterministic).
 - **Deep review** - Bug fixes, test gap fills, documentation headers, TESTING.md rewrite
 
 ### Phase 4: Smart Features

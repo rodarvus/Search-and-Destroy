@@ -100,6 +100,29 @@ run_test("State.update_room_nil_fields", function()
    assert_equal("", room.name, "nil name defaults to empty")
 end)
 
+--- Test: GMCP num as string is coerced to number for safe comparisons
+-- Setup: Aardwolf GMCP may deliver room.info.num as a string (Crowley defends against this)
+-- Input: update_room with num="12345" (string)
+-- Expected: rmid stored as number 12345 so downstream comparisons (cmd_nx, on_room_change) work
+-- Covers: State.update_room() type coercion — prevents nx "already in that room" bug
+run_test("State.update_room_coerces_string_num", function()
+   State.update_room({num = "12345", zone = "diatz", name = "Test Room", exits = {}})
+   local room = State.get_room()
+   assert_equal(12345, room.rmid, "string num coerced to number")
+   assert_equal("number", type(room.rmid), "rmid type is number")
+end)
+
+--- Test: GMCP num as bogus string defaults to -1 (number)
+-- Setup: defensive case if GMCP ever delivers garbage
+-- Expected: tonumber fails → fallback to -1 (still number)
+-- Covers: State.update_room() coercion fallback
+run_test("State.update_room_invalid_num_defaults", function()
+   State.update_room({num = "not_a_number", zone = "diatz", name = "X", exits = {}})
+   local room = State.get_room()
+   assert_equal(-1, room.rmid, "unparseable num defaults to -1")
+   assert_equal("number", type(room.rmid), "rmid type is number even on fallback")
+end)
+
 --- Test: update_char populates char_state, level, tnl from GMCP char.status
 -- Covers: State.update_char()
 run_test("State.update_char", function()

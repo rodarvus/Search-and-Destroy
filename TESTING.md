@@ -27,24 +27,24 @@ This project follows strict Test-Driven Development:
 | `tests/load_plugin.lua` | Extracts Lua from XML CDATA, loads into global environment |
 | `tests/test_data.lua` | Verified game output samples: CP info/check, GQ events, hunt, consider, damage, quest |
 
-## Test Suite Summary (758 tests across 14 files)
+## Test Suite Summary (774 assertions across 14 files)
 
-| File | Tests | Module | Coverage |
-|------|-------|--------|----------|
-| test_util.lua | 30 | Util | fixsql, trim, split, strip_colours, ellipsify, round |
-| test_config.lua | 25 | Config | defaults, load/save, set/get, roundtrip |
-| test_db.lua | 48 | DB | schema, seeding, CRUD, transactions, injection prevention, find_mob |
-| test_mob_keyword.lua | 53 | MobKeyword | basic guessing, punctuation, exceptions, area filters, hyphens, edge cases |
-| test_noexp.lua | 28 | Noexp | init, check_tnl boundaries, set, level 200+, exact cutoff, CP interaction |
-| test_state.lua | 56 | State + CP | room/char updates, activity transitions, CP start/clear/info/check/events, noexp-CP |
-| test_target_list.lua | 41 | TargetList | detect_type, resolve_area_key, build, sort, get_alive, find_by_mob, clear |
-| test_triggers.lua | 125 | Trigger regex | PCRE validation for all 48 XML triggers against verified game output |
-| test_nav.lua | 28 | Nav | goto_area, goto_room, Vidblain, fuzzy_match, arrival detection, goto_next, search_rooms, build_goto_list |
-| test_commands.lua | 40 | Commands | cmd_xcp (list/select/pickup/bounds/dead/unknown/ht-arrive/qw-arrive/off), cmd_go, cmd_nx, cmd_xrt, cmd_kk, cmd_xset, CP.do_info/do_check |
-| test_cp_workflow.lua | 19 | Integration | Full CP lifecycle + Phase 3 hunting tool chains (HT→QW, QW direct, HT here→QW, HT fallback) |
-| test_hunt_trick.lua | 23 | HuntTrick | start (basic/indexed/no-prefix/resets/no_hunt/trigger-group), reset, is_active, direction (inactive/increments), here (chains QW/no target), unable (chains QW/no target), not_found (fallback/no fallback), abort, cmd_ht (no target/target/arg/indexed/abort/zero) |
-| test_quick_where.lua | 27 | QuickWhere | start (basic/indexed/no-prefix/resets/trigger-group), start_exact (basic/auto_go), reset, check_match (exact pos/neg/long, keyword pos/neg/multi), on_qw_match (exact/keyword/retry/max100/auto_go/no_auto_go), on_qw_no_match, cmd_qw (no target/target/arg/indexed/abort/zero) |
-| test_auto_hunt.lua | 15 | AutoHunt | start (basic/resets/trigger-group), reset, direction (move+hunt/door/2nd-group/inactive), here, not_found, cmd_ah (cancel/abort/zero/no target/target/arg) |
+| File | Module | Coverage |
+|------|--------|----------|
+| test_util.lua | Util | fixsql, trim, split, strip_colours, ellipsify, round |
+| test_config.lua | Config | defaults, load/save, set/get, roundtrip |
+| test_db.lua | DB | schema, seeding, CRUD, transactions, injection prevention, find_mob |
+| test_mob_keyword.lua | MobKeyword | basic guessing, punctuation, exceptions, area filters, hyphens, edge cases |
+| test_noexp.lua | Noexp | init, check_tnl boundaries, set, level 200+, exact cutoff, CP interaction |
+| test_state.lua | State + CP | room/char updates (incl. string-num coercion), activity transitions, CP start/clear/info/check/events, noexp-CP |
+| test_target_list.lua | TargetList | detect_type, resolve_area_key, build, sort, get_alive, find_by_mob, clear |
+| test_triggers.lua | Trigger regex | PCRE validation for all 48 XML triggers against verified game output |
+| test_nav.lua | Nav | goto_area, goto_room, Vidblain, fuzzy_match, arrival detection, goto_next, search_rooms (ordered by uid), build_goto_list, build_goto_list_from_rooms, display_goto_list |
+| test_commands.lua | Commands | cmd_xcp (list/select/pickup/bounds/dead/unknown/DB-history/auto-go-on-1/multi-room-wait/no-history paths/HT-in-parallel/HT-cancel-on-reselect/string-num arrival), cmd_go (incl. cancels HT), cmd_nx (incl. cancels HT, advances after string-num arrival), cmd_xrt, cmd_kk, cmd_xset, CP.do_info/do_check |
+| test_cp_workflow.lua | Integration | Full CP lifecycle, cold-pickup auto-display, kill-refresh silent, no-history navigates-then-discovers, single-room auto-navigate |
+| test_hunt_trick.lua | HuntTrick | start (basic/indexed/no-prefix/no_hunt/trigger-group), does_not_reset_others (parallel-safe), cmd_ht.resets_others (manual exclusivity), reset, is_active, direction, here/unable/not_found (chain + no_chain), abort, cmd_ht (no target/target/arg/indexed/abort/zero) |
+| test_quick_where.lua | QuickWhere | start (basic/indexed/no-prefix/trigger-group), does_not_reset_others (parallel-safe), cmd_qw.resets_others, start_exact (basic/auto_go), reset, check_match (exact pos/neg/long, keyword pos/neg/multi), on_qw_match (exact/keyword/retry/max100, single-room auto-navigate, multi-room wait), on_qw_no_match, cmd_qw |
+| test_auto_hunt.lua | AutoHunt | start (basic/trigger-group), does_not_reset_others, cmd_ah.resets_others, reset, direction (move+hunt/door/2nd-group/inactive), here, not_found, cmd_ah |
 
 ## Testing Matrix: Functions vs Tests
 
@@ -230,27 +230,27 @@ This project follows strict Test-Driven Development:
 | 2.12 | CP complete | Kill all CP mobs | "CONGRATULATIONS!" trigger fires, CP state cleared |
 | 2.13 | New CP available | After CP complete, verify game says "You may now take..." | S&D detects |
 
-### Phase 3: Hunting Tools
+### Phase 3: Hunting Tools (post-redesign)
 
 | # | Test | Steps | Expected |
 |---|------|-------|----------|
-| 3.1 | HT with xcp arrival | `xset xcp_action_mode ht`, then `xcp 1` | Navigate to area, on arrival HT starts ("hunt keyword" sent) |
-| 3.2 | HT cycling | Observe HT output | "hunt 2.keyword", "hunt 3.keyword", etc. as direction messages come back |
-| 3.3 | HT → QW chain | Let HT run until "unable to hunt" | QW exact mode starts automatically at last index |
-| 3.4 | QW room search | Observe QW match | "Found N room(s)" message, mapper navigate starts (auto_go) |
-| 3.5 | QW with xcp arrival | `xset xcp_action_mode qw`, then `xcp 1` | Navigate to area, on arrival QW exact starts |
-| 3.6 | Manual ht | With target, type `ht` | HT starts with current target keyword |
-| 3.7 | Manual ht with arg | Type `ht guard` | HT starts with "guard" keyword |
-| 3.8 | Manual qw | With target, type `qw` | QW starts in keyword mode |
-| 3.9 | Manual qw exact | With target, type `qw` after HT unable | QW matches exact mob name |
-| 3.10 | Auto-hunt | Type `ah` with target | AH sends "hunt keyword", follows directions |
-| 3.11 | AH door handling | AH encounters closed door | "open dir" sent before movement |
-| 3.12 | AH abort | Type `ah abort` during AH | AH stops, notification shown |
-| 3.13 | HT abort | Type `ht 0` during HT | HT stops, notification shown |
-| 3.14 | QW abort | Type `qw abort` during QW | QW stops, notification shown |
-| 3.15 | Re-entrant safety | Start HT, then type `qw` | HT resets, QW starts (no overlap) |
-| 3.16 | go after QW match | After QW finds rooms, type `go` or `go 2` | Navigate to room in goto_list |
-| 3.17 | nx after go | After `go`, type `nx` | Advance to next room in list |
+| 3.1 | xcp with S&D history (multiple rooms) | Pick a CP target the plugin has seen before | Room list shown with index/roomid/name/freq, no auto-navigate, HT starts in parallel |
+| 3.2 | xcp with S&D history (single room) | Pick a CP target with only one historical room | Room list shown (1 entry), auto-navigates to that room, HT starts in parallel |
+| 3.3 | xcp with no history, in target area | Be in target area, pick a CP target the plugin has not seen | `where keyword` sent directly, no `mapper goto`, HT starts in parallel |
+| 3.4 | xcp with no history, out of area | Be elsewhere, pick a CP target the plugin has not seen | `mapper goto` to target area, then on arrival `where keyword` sent + HT starts |
+| 3.5 | QW match, multiple rooms | After `where` finds the mob in N>1 rooms | List shown, no auto-navigate, user picks via `go`/`nx` |
+| 3.6 | QW match, single room | After `where` finds the mob in 1 room | Auto-navigates immediately |
+| 3.7 | go after list shown | Type `go` or `go N` | Navigate to room N (`go` defaults to 1), cancels HT |
+| 3.8 | nx advances | Type `nx` after arriving at a list room | Advances to next room in list, cancels HT |
+| 3.9 | Manual ht | With target, type `ht` | HT exclusive: cancels QW/AH, sends `hunt keyword` |
+| 3.10 | Manual ht with arg | Type `ht guard` | HT starts with "guard" keyword |
+| 3.11 | Manual qw | With target, type `qw` | QW exclusive: cancels HT/AH, runs `where keyword` |
+| 3.12 | Manual qw exact | With target, type `qw` after HT unable | QW matches exact mob name |
+| 3.13 | Auto-hunt | Type `ah` with target | AH exclusive: cancels HT/QW, sends `hunt keyword`, follows directions |
+| 3.14 | AH door handling | AH encounters closed door | `open <dir>` sent before movement |
+| 3.15 | Abort commands | `ht 0` / `qw 0` / `ah 0` | Each tool stops, notification shown |
+| 3.16 | xcp re-select cancels HT | xcp 1, then xcp 2 mid-flight | HT for target 1 cancelled, HT for target 2 starts |
+| 3.17 | Cold mid-CP pickup | Load plugin mid-campaign, type `xcp` | `cp info` + `cp check` chain runs, target list auto-displays once |
 
 ### Phase 4: Noexp Interaction
 
@@ -326,6 +326,6 @@ cd Search-and-Destroy
 lua tests/test_runner.lua
 ```
 
-Expected: `758/758 passed, 0 failed`
+Expected: `774/774 passed, 0 failed`
 
 The pre-commit hook runs this automatically on every `git commit`.

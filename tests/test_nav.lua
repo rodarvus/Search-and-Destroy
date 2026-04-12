@@ -303,19 +303,18 @@ end)
 -- Nav.search_rooms
 ------------------------------------------------------------------------
 
---- Test: search_rooms finds rooms matching name and area
--- Setup: mapper fixture has 2 rooms named "A Dusty Room" in diatz
+--- Test: search_rooms finds rooms matching name and area, ordered by uid ascending
+-- Setup: mapper fixture has 2 rooms named "A Dusty Room" in diatz (uids 1254, 1260)
 -- Input: room_name="A Dusty Room", area_key="diatz"
--- Expected: returns 2 results with uid 1254 and 1260
--- Covers: Nav.search_rooms() basic match
+-- Expected: returns 2 results with uid 1254 first, 1260 second (deterministic order)
+-- Why: undefined SQL order made `nx` non-deterministic across calls
+-- Covers: Nav.search_rooms() basic match + ORDER BY uid
 run_test("Nav.search_rooms_found", function()
    local results = Nav.search_rooms("A Dusty Room", "diatz")
    assert_equal(2, #results, "found 2 rooms")
-   -- Check both UIDs present (order may vary)
-   local uids = {}
-   for _, r in ipairs(results) do uids[r.uid] = true end
-   assert_true(uids["1254"], "found room 1254")
-   assert_true(uids["1260"], "found room 1260")
+   -- uids stored as strings from sqlite TEXT column; sort numerically
+   assert_equal("1254", results[1].uid, "first result has lowest uid")
+   assert_equal("1260", results[2].uid, "second result has higher uid")
 end)
 
 --- Test: search_rooms returns empty for nonexistent room name

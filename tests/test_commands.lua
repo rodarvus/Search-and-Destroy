@@ -277,6 +277,28 @@ run_test("cmd_nx.advances_room", function()
    assert_true(found, "navigated to next room 22222")
 end)
 
+--- Test: nx advances after arrival when GMCP delivered num as string
+-- Setup: simulate the actual production path — State.update_room({num="11111",...}) then nx
+-- Expected: rmid coerced to number → comparison succeeds → index advances → goto next room
+-- Covers: cmd_nx() advance + State.update_room() string-num coercion (regression for "already in that room" bug)
+run_test("cmd_nx.advances_after_string_num_arrival", function()
+   Nav._goto_list = {11111, 22222, 33333}
+   Nav._goto_index = 1
+   -- Simulate Aardwolf GMCP delivering num as string (the production case)
+   State.update_room({num = "11111", zone = "test", name = "Room 1", exits = {}})
+   Nav._dest_room = nil
+   mock.reset()
+
+   cmd_nx(nil, nil, {})
+
+   assert_equal(2, Nav._goto_index, "index advanced — comparison handled string num")
+   local found = false
+   for _, call in ipairs(mock.calls["Execute"] or {}) do
+      if call[1] == "mapper goto 22222" then found = true end
+   end
+   assert_true(found, "navigated to next room 22222")
+end)
+
 --- Test: nx at end of list does not advance or navigate
 -- Covers: cmd_nx() boundary
 run_test("cmd_nx.at_end_of_list", function()
@@ -301,6 +323,40 @@ run_test("cmd_nx.empty_list", function()
    cmd_nx(nil, nil, {})
 
    assert_nil(mock.calls["Execute"], "no navigation with empty list")
+end)
+
+--- Test: cmd_go cancels any in-flight HT (user taking manual control)
+-- Setup: HT active, goto_list has rooms
+-- Expected: HT.reset() called, navigation proceeds
+-- Covers: cmd_go() HT cancellation
+run_test("cmd_go.cancels_ht", function()
+   Nav._goto_list = {11111, 22222}
+   Nav._goto_index = 0
+   State._room = {rmid = 99999, arid = "test", name = "Elsewhere", exits = {}, maze = false}
+   HuntTrick._active = true
+   HuntTrick._keyword = "wolf"
+   mock.reset()
+
+   cmd_go(nil, nil, {[1] = "1"})
+
+   assert_false(HuntTrick._active, "HT cancelled when user types go")
+end)
+
+--- Test: cmd_nx cancels any in-flight HT (user taking manual control)
+-- Setup: HT active, at first room of list
+-- Expected: HT.reset() called, advance to next room
+-- Covers: cmd_nx() HT cancellation
+run_test("cmd_nx.cancels_ht", function()
+   Nav._goto_list = {11111, 22222}
+   Nav._goto_index = 1
+   State._room = {rmid = 11111, arid = "test", name = "Room 1", exits = {}, maze = false}
+   HuntTrick._active = true
+   HuntTrick._keyword = "wolf"
+   mock.reset()
+
+   cmd_nx(nil, nil, {})
+
+   assert_false(HuntTrick._active, "HT cancelled when user types nx")
 end)
 
 ------------------------------------------------------------------------
@@ -572,65 +628,171 @@ run_test("CP.do_check.sends_when_ready", function()
 end)
 
 ------------------------------------------------------------------------
--- cmd_xcp: arrival triggers hunting tools (Phase 3 integration)
+-- cmd_xcp: redesigned flow (DB-first, where-fallback, auto-go-on-1, HT in parallel)
 ------------------------------------------------------------------------
 
---- Test: xcp with action_mode="ht" triggers HuntTrick on area arrival
--- Setup: target list built, xcp_action_mode = "ht"
--- Expected: after simulating area arrival, HuntTrick._active = true
--- Covers: cmd_xcp() + Nav._on_arrive → HuntTrick.start()
-run_test("cmd_xcp.arrive_triggers_ht", function()
-   build_test_targets()
-   mock.variables["snd_xcp_action_mode"] = "ht"
-   Config.load()
+--- Helper: build a target with explicit S&D mob history (skips DB.find_mob)
+local function build_target_with_rooms(mob, area_key, rooms)
+   CP._on_cp = true
+   CP._type = "area"
+   State._activity = "cp"
+   TargetList._main_list = {{
+      mob = mob, location = area_key, area_key = area_key,
+      keyword = mob:gsub("%s", ""):sub(1, 8), dead = false, link_type = "area",
+      roomid = nil, room_name = nil,
+      rooms = rooms or {}, found_in_area = (rooms and #rooms > 0) or false,
+      unlikely = false, likely = false, index = 1, _input_order = 1,
+   }}
+   TargetList._type = "area"
+end
+
+--- Test: xcp uses S&D history when available (no `where` sent)
+-- Setup: target has 3 historical rooms in t.rooms
+-- Expected: goto_list built from t.rooms, list displayed, no `where` SendNoEcho call
+-- Covers: cmd_xcp() Path 2 (DB history)
+run_test("cmd_xcp.uses_db_history_when_available", function()
+   build_target_with_rooms("an old woman", "dortmund", {
+      {roomid = 100, room_name = "A log cabin", freq = 5},
+      {roomid = 200, room_name = "A small house", freq = 3},
+      {roomid = 300, room_name = "A dirt road", freq = 1},
+   })
+   State._room = {rmid = 32418, arid = "aylor", name = "Aylor", exits = {}, maze = false}
    mock.reset()
 
    cmd_xcp(nil, nil, {[1] = "1"})
 
-   -- Verify on_arrive callback is set
-   assert_true(Nav._on_arrive ~= nil, "on_arrive callback set")
-
-   -- Simulate arrival in the target area
-   local target = State.get_target()
-   assert_true(target ~= nil, "target selected")
-   Nav._on_arrive()
-   assert_true(HuntTrick._active, "HT started on arrival")
-   assert_equal(target.keyword, HuntTrick._keyword, "HT uses target keyword")
+   assert_equal(3, #Nav._goto_list, "goto_list built from 3 historical rooms")
+   assert_equal(100, Nav._goto_list[1], "first room is highest-freq (100)")
+   -- No `where` should be sent
+   for _, call in ipairs(mock.calls["SendNoEcho"] or {}) do
+      assert_false(call[1]:find("where") ~= nil, "no where command sent — using DB history")
+   end
+   -- List was displayed
+   assert_not_nil(mock.calls["ColourNote"], "list displayed via ColourNote")
 end)
 
---- Test: xcp with action_mode="qw" triggers QuickWhere on arrival
--- Setup: target list built, xcp_action_mode = "qw"
--- Expected: after simulating area arrival, QuickWhere._active = true
--- Covers: cmd_xcp() + Nav._on_arrive → QuickWhere.start_exact()
-run_test("cmd_xcp.arrive_triggers_qw", function()
-   build_test_targets()
-   mock.variables["snd_xcp_action_mode"] = "qw"
-   Config.load()
+--- Test: xcp auto-navigates when only 1 room matches
+-- Setup: target has 1 historical room
+-- Expected: mapper goto fires, _goto_index = 1
+-- Covers: cmd_xcp() Path 2 single-room auto-navigate
+run_test("cmd_xcp.auto_navigates_single_room", function()
+   build_target_with_rooms("an old woman", "dortmund", {
+      {roomid = 100, room_name = "A log cabin", freq = 5},
+   })
+   State._room = {rmid = 32418, arid = "aylor", name = "Aylor", exits = {}, maze = false}
    mock.reset()
 
    cmd_xcp(nil, nil, {[1] = "1"})
 
-   assert_true(Nav._on_arrive ~= nil, "on_arrive callback set")
+   assert_equal(1, #Nav._goto_list, "single-room goto_list")
+   assert_equal(1, Nav._goto_index, "goto_next advanced index")
+   local found = false
+   for _, call in ipairs(mock.calls["Execute"] or {}) do
+      if call[1] == "mapper goto 100" then found = true end
+   end
+   assert_true(found, "auto-navigated to the single room")
+end)
 
-   local target = State.get_target()
-   Nav._on_arrive()
-   assert_true(QuickWhere._active, "QW started on arrival")
+--- Test: xcp shows list and waits when multiple rooms match
+-- Setup: target has 3 historical rooms
+-- Expected: list displayed, NO mapper goto
+-- Covers: cmd_xcp() Path 2 multi-room wait-for-user
+run_test("cmd_xcp.shows_list_waits_multiple_rooms", function()
+   build_target_with_rooms("an old woman", "dortmund", {
+      {roomid = 100, room_name = "A log cabin", freq = 5},
+      {roomid = 200, room_name = "A small house", freq = 3},
+   })
+   State._room = {rmid = 32418, arid = "aylor", name = "Aylor", exits = {}, maze = false}
+   mock.reset()
+
+   cmd_xcp(nil, nil, {[1] = "1"})
+
+   assert_equal(2, #Nav._goto_list, "2-room goto_list")
+   assert_equal(0, Nav._goto_index, "no auto-navigate — waiting for user")
+   local mapper_called = false
+   for _, call in ipairs(mock.calls["Execute"] or {}) do
+      if call[1]:find("mapper goto") then mapper_called = true end
+   end
+   assert_false(mapper_called, "no mapper goto — user must pick")
+end)
+
+--- Test: xcp with no history but in target area sends `where` directly
+-- Setup: target has empty rooms, current room is in target area
+-- Expected: QW.start_exact called (sends `where`), no Nav.goto_area
+-- Covers: cmd_xcp() Path 3 in-area discovery
+run_test("cmd_xcp.no_history_in_area_sends_where_directly", function()
+   build_target_with_rooms("an old woman", "dortmund", {})  -- no history
+   -- In target area
+   State._room = {rmid = 786, arid = "dortmund", name = "A dirt road", exits = {}, maze = false}
+   mock.reset()
+
+   cmd_xcp(nil, nil, {[1] = "1"})
+
+   assert_true(QuickWhere._active, "QW activated for discovery")
    assert_true(QuickWhere._exact, "QW in exact mode")
-   assert_true(QuickWhere._auto_go, "QW with auto_go")
-   assert_equal(target.keyword, QuickWhere._keyword, "QW uses target keyword")
+   assert_false(QuickWhere._auto_go, "auto_go=false — handled by goto_list size at on_qw_match time")
+   -- No mapper navigation
+   for _, call in ipairs(mock.calls["Execute"] or {}) do
+      assert_false(call[1]:find("mapper goto") ~= nil, "no mapper goto when already in area")
+   end
 end)
 
---- Test: xcp with action_mode="off" does not trigger hunting tools
--- Setup: target list built, xcp_action_mode = "off"
--- Expected: on_arrive is nil
--- Covers: cmd_xcp() action_mode off
-run_test("cmd_xcp.arrive_off_no_action", function()
-   build_test_targets()
-   mock.variables["snd_xcp_action_mode"] = "off"
-   Config.load()
+--- Test: xcp with no history out of area navigates first, then runs `where` on arrival
+-- Setup: target has empty rooms, current room is in DIFFERENT area
+-- Expected: Nav.goto_area called, _on_arrive set; QW NOT yet active
+-- Covers: cmd_xcp() Path 3 navigate-then-discover
+run_test("cmd_xcp.no_history_out_of_area_navigates_first", function()
+   build_target_with_rooms("an old woman", "dortmund", {})
+   State._room = {rmid = 32418, arid = "aylor", name = "Aylor", exits = {}, maze = false}
    mock.reset()
 
    cmd_xcp(nil, nil, {[1] = "1"})
 
-   assert_nil(Nav._on_arrive, "no on_arrive callback when action=off")
+   assert_not_nil(Nav._on_arrive, "_on_arrive set for deferred where+HT")
+   assert_false(QuickWhere._active, "QW not yet active — waits for arrival")
+   -- Mapper navigation should have been initiated
+   local mapper_called = false
+   for _, call in ipairs(mock.calls["Execute"] or {}) do
+      if call[1]:find("mapper goto") then mapper_called = true end
+   end
+   assert_true(mapper_called, "mapper goto fired for area navigation")
+end)
+
+--- Test: xcp starts HT in parallel with chain_on_complete=false
+-- Setup: target with history rooms (Path 2)
+-- Expected: HT active, chain_on_complete = false (so HT won't clobber goto_list via QW chain)
+-- Covers: cmd_xcp() HT-in-parallel behavior
+run_test("cmd_xcp.starts_ht_in_parallel", function()
+   build_target_with_rooms("an old woman", "dortmund", {
+      {roomid = 100, room_name = "A log cabin", freq = 5},
+      {roomid = 200, room_name = "A small house", freq = 3},
+   })
+   State._room = {rmid = 32418, arid = "aylor", name = "Aylor", exits = {}, maze = false}
+   mock.reset()
+
+   cmd_xcp(nil, nil, {[1] = "1"})
+
+   assert_true(HuntTrick._active, "HT started in parallel")
+   assert_false(HuntTrick._chain_on_complete, "HT chain disabled — won't rebuild goto_list")
+end)
+
+--- Test: cmd_xcp on reselect cancels prior HT
+-- Setup: HT active from earlier xcp
+-- Expected: HT.reset() called before new selection
+-- Covers: cmd_xcp() reselect cleanup
+run_test("cmd_xcp.cancels_ht_on_reselect", function()
+   build_target_with_rooms("an old woman", "dortmund", {
+      {roomid = 100, room_name = "A log cabin", freq = 5},
+   })
+   State._room = {rmid = 32418, arid = "aylor", name = "Aylor", exits = {}, maze = false}
+   -- Simulate HT already active
+   HuntTrick._active = true
+   HuntTrick._keyword = "stale"
+   mock.reset()
+
+   cmd_xcp(nil, nil, {[1] = "1"})
+
+   -- HT reset and restarted with new keyword
+   assert_true(HuntTrick._active, "HT re-started for new target")
+   assert_false(HuntTrick._keyword == "stale", "stale keyword cleared")
 end)

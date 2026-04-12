@@ -59,14 +59,25 @@ run_test("AutoHunt.start_basic", function()
    assert_true(found, "sent 'hunt citizen'")
 end)
 
---- Test: start resets other tools (re-entrant safety)
--- Covers: AutoHunt.start() re-entrant safety
-run_test("AutoHunt.start_resets_others", function()
+--- Test: AH.start does NOT reset other tools (parallel mode allowed)
+-- Covers: AutoHunt.start() — exclusivity moved to cmd_ah
+run_test("AutoHunt.start_does_not_reset_others", function()
    HuntTrick._active = true
    QuickWhere._active = true
    AutoHunt.start("citizen")
-   assert_false(HuntTrick._active, "HT reset")
-   assert_false(QuickWhere._active, "QW reset")
+   assert_true(HuntTrick._active, "HT NOT reset by AH.start (parallel-safe)")
+   assert_true(QuickWhere._active, "QW NOT reset by AH.start (parallel-safe)")
+end)
+
+--- Test: cmd_ah (manual command) DOES reset other hunting tools
+-- Covers: cmd_ah() exclusivity
+run_test("cmd_ah.resets_others", function()
+   State._target = {keyword = "wolf", mob = "a wolf", area_key = "diatz"}
+   HuntTrick._active = true
+   QuickWhere._active = true
+   cmd_ah(nil, nil, {[1] = ""})
+   assert_false(HuntTrick._active, "HT reset by cmd_ah")
+   assert_false(QuickWhere._active, "QW reset by cmd_ah")
 end)
 
 ------------------------------------------------------------------------

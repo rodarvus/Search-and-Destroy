@@ -497,6 +497,75 @@ run_test("workflow.xcp_picks_up_existing_cp", function()
    assert_equal(2, #TargetList.get_alive(), "both targets alive")
 end)
 
+--- Test: cold mid-CP pickup auto-displays target list
+-- Setup: not on CP, no prev target (plugin loaded mid-campaign)
+-- Input: cmd_xcp("") triggers pickup → simulate full info+check pipeline
+-- Expected: ColourNote called by TargetList.display() after check_end builds list
+-- Covers: on_cp_check_end() cold-pickup display branch
+-- Why: prior bug — pickup built list silently, user had to type xcp twice to see it
+run_test("workflow.xcp_pickup_displays_list_on_cold_start", function()
+   -- Plugin loaded mid-campaign: no CP state, no prior target
+   CP._on_cp = false
+   CP._info_list = {}
+   CP._check_list = {}
+   CP._level = 0
+   CP._type = "area"
+   CP._last_check_time = 0
+   CP._last_target = nil
+   State._activity = "none"
+   TargetList.clear()
+   State.clear_target()
+   mock.reset()
+   mock.reset_db()
+   DB.init()
+
+   -- Cold pickup: user types xcp → pickup chain runs end-to-end
+   cmd_xcp(nil, nil, {[1] = ""})
+   on_cp_info_level(nil, nil, {[1] = "10"})
+   on_cp_info_start(nil, nil, {})
+   on_cp_info_line(nil, nil, {[1] = "an old woman", [2] = "Dortmund"})
+   on_cp_info_line(nil, nil, {[1] = "hatred", [2] = "Fantasy Fields"})
+   on_cp_info_end(nil, nil, {})
+   CP._last_check_time = 0
+   CP._check_list = {}
+   on_cp_check_line(nil, nil, {[1] = "an old woman", [2] = "Dortmund", [3] = false})
+   on_cp_check_line(nil, nil, {[1] = "hatred", [2] = "Fantasy Fields", [3] = false})
+   on_cp_check_end(nil, nil, {})
+
+   -- TargetList.display() emits ColourNote for divider + each target row
+   assert_not_nil(mock.calls["ColourNote"], "ColourNote called — list auto-displayed on cold pickup")
+end)
+
+--- Test: kill-refresh path does NOT auto-display list
+-- Setup: on CP, prev_target set (mob killed mid-CP)
+-- Input: simulate cp check refresh after a kill — prev_target re-matched
+-- Expected: ColourNote NOT called by check_end (avoid display spam after every kill)
+-- Covers: on_cp_check_end() prev_target branch — display only on cold pickup
+run_test("workflow.kill_refresh_does_not_display_list", function()
+   -- Active CP with a current target (mid-campaign, mob just killed)
+   CP._on_cp = true
+   CP._level = 10
+   CP._type = "area"
+   CP._last_check_time = 0
+   State._activity = "cp"
+   TargetList.clear()
+   -- Prior target: simulating "saved before refresh" by on_cp_mob_killed
+   CP._last_target = {mob = "an old woman", area_key = "dortmund", keyword = "old woman", dead = false, link_type = "area"}
+   State.set_target(CP._last_target)
+   mock.reset()
+   mock.reset_db()
+   DB.init()
+
+   -- Refresh after a kill: cp check re-runs, prev target is still alive in fresh list
+   CP._check_list = {}
+   on_cp_check_line(nil, nil, {[1] = "an old woman", [2] = "Dortmund", [3] = false})
+   on_cp_check_line(nil, nil, {[1] = "hatred", [2] = "Fantasy Fields", [3] = false})
+   on_cp_check_end(nil, nil, {})
+
+   -- prev_target branch should NOT display the list
+   assert_nil(mock.calls["ColourNote"], "ColourNote NOT called — kill refresh stays silent")
+end)
+
 ------------------------------------------------------------------------
 -- Phase 3: Hunting tool integration workflows
 ------------------------------------------------------------------------
@@ -516,6 +585,7 @@ local function setup_cp_with_mapper()
          area TEXT
       );
       INSERT INTO rooms VALUES ('1254', 'A Dusty Room', 'diatz');
+      INSERT INTO rooms VALUES ('1255', 'A Dusty Room', 'diatz');
       INSERT INTO rooms VALUES ('1260', 'A Narrow Passage', 'diatz');
    ]])
    db:close()
@@ -532,78 +602,58 @@ local function setup_cp_with_mapper()
    TargetList.build(check_list, "area", 45)
 end
 
---- Test: Full flow: xcp → arrive → HT cycles → unable → QW exact → match → goto_list
--- Simulates the complete HT→QW chain from selecting a target
--- Covers: cmd_xcp → HuntTrick.start → on_ht_direction → on_ht_unable → QuickWhere.start_exact → on_qw_match
-run_test("workflow.xcp_ht_to_qw_chain", function()
-   setup_cp_with_mapper()
-   mock.variables["snd_xcp_action_mode"] = "ht"
-   Config.load()
+--- Test: xcp with no S&D history → navigate to area → arrival fires QW + HT in parallel
+-- Simulates: out-of-area xcp → mapper goto area → on arrival, where + HT both run
+-- Covers: cmd_xcp() Path 3 navigate-then-discover, _on_arrive callback chain
+run_test("workflow.xcp_no_history_navigates_then_discovers", function()
+   setup_cp_with_mapper()  -- builds a target list via TargetList.build (no DB.find_mob hits → empty rooms)
 
-   -- Select target 1
+   -- Select target 1 (out of area)
    cmd_xcp(nil, nil, {[1] = "1"})
    local target = State.get_target()
    assert_true(target ~= nil, "target selected")
+   assert_not_nil(Nav._on_arrive, "_on_arrive set for deferred discovery")
 
-   -- Simulate area arrival
-   assert_true(Nav._on_arrive ~= nil, "on_arrive set")
-   Nav._on_arrive()
-   assert_true(HuntTrick._active, "HT started on arrival")
-   assert_equal(1, HuntTrick._index, "HT at index 1")
-
-   -- Simulate HT direction found (mob is north)
-   on_ht_direction("trg_ht_direction", "You are certain that a sinister vandal is north from here.",
-      {"north", false, false, false, false})
-   assert_equal(2, HuntTrick._index, "HT advanced to index 2")
-
-   -- Simulate HT direction again
-   on_ht_direction("trg_ht_direction", "You are certain that a sinister vandal is east from here.",
-      {"east", false, false, false, false})
-   assert_equal(3, HuntTrick._index, "HT advanced to index 3")
-
-   -- Simulate HT unable (all instances exhausted)
+   -- Simulate arrival in the target area
    State._room = {rmid = 1254, arid = "diatz", name = "A Room", exits = {}, maze = false}
-   on_ht_unable("trg_ht_unable", "You seem unable to hunt that target for some reason.", {})
-   assert_false(HuntTrick._active, "HT reset after unable")
-   assert_true(QuickWhere._active, "QW started after HT unable")
-   assert_true(QuickWhere._exact, "QW in exact mode")
-   assert_equal(3, QuickWhere._index, "QW at HT's last index")
-   assert_true(QuickWhere._auto_go, "QW has auto_go from HT")
+   local cb = Nav._on_arrive
+   cb()  -- fire what would happen on area arrival
 
-   -- Simulate QW match
+   assert_true(QuickWhere._active, "QW launched on arrival")
+   assert_true(QuickWhere._exact, "QW in exact mode")
+   assert_true(HuntTrick._active, "HT launched in parallel on arrival")
+   assert_false(HuntTrick._chain_on_complete, "HT chain disabled to protect goto_list")
+
+   -- Simulate QW match → goto_list built from mapper DB
    on_qw_match("trg_qw_match", "a sinister vandal              A Dusty Room",
       {"a sinister vandal             ", "A Dusty Room"})
    assert_false(QuickWhere._active, "QW reset after match")
    assert_true(#Nav._goto_list > 0, "goto_list populated from mapper DB")
+   -- Two "A Dusty Room" rooms in fixture → list size 2 → no auto-navigate
+   assert_equal(2, #Nav._goto_list, "found 2 matching rooms")
+   assert_equal(0, Nav._goto_index, "no auto-navigate when multiple rooms")
 
    os.remove(mapper_db_path)
 end)
 
---- Test: Full flow: xcp → arrive → QW → match → goto_list built with auto_go
--- Covers: cmd_xcp → QuickWhere.start_exact → on_qw_match → Nav.build_goto_list
-run_test("workflow.xcp_qw_direct", function()
+--- Test: xcp with single matching room auto-navigates
+-- Setup: target with no history, where finds mob in unique-name room
+-- Expected: QW match → goto_list size 1 → Nav.goto_next() fires
+-- Covers: on_qw_match() auto-go-on-1 rule
+run_test("workflow.xcp_qw_single_room_auto_navigates", function()
    setup_cp_with_mapper()
-   mock.variables["snd_xcp_action_mode"] = "qw"
-   Config.load()
 
-   -- Select target 1
    cmd_xcp(nil, nil, {[1] = "1"})
-   local target = State.get_target()
-   assert_true(target ~= nil, "target selected")
+   State._room = {rmid = 5000, arid = "diatz", name = "Some Room", exits = {}, maze = false}
+   Nav._on_arrive()  -- arrive in area, launches QW + HT
 
-   -- Simulate area arrival
-   Nav._on_arrive()
-   assert_true(QuickWhere._active, "QW started on arrival")
-   assert_true(QuickWhere._exact, "QW in exact mode")
-   assert_true(QuickWhere._auto_go, "QW with auto_go")
+   -- Simulate QW match for room name with only ONE entry in fixture
+   -- Fixture: "A Narrow Passage" (uid 1260) is unique in diatz
+   on_qw_match("trg_qw_match", "a sinister vandal              A Narrow Passage",
+      {"a sinister vandal             ", "A Narrow Passage"})
 
-   -- Simulate QW match
-   State._room = {rmid = 1254, arid = "diatz", name = "A Room", exits = {}, maze = false}
-   on_qw_match("trg_qw_match", "a sinister vandal              A Dusty Room",
-      {"a sinister vandal             ", "A Dusty Room"})
-   assert_false(QuickWhere._active, "QW reset after match")
-   assert_true(#Nav._goto_list > 0, "goto_list populated")
-   assert_true(Nav._goto_index > 0, "auto_go advanced goto_index")
+   assert_equal(1, #Nav._goto_list, "single matching room")
+   assert_equal(1, Nav._goto_index, "auto-navigated")
 
    os.remove(mapper_db_path)
 end)

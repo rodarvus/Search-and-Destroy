@@ -1622,7 +1622,6 @@ Config = {
 -- Default setting values
 Config._defaults = {
    -- Action modes
-   xcp_action_mode    = "qw",      -- qw or ht
    nx_action          = "smartscan", -- smartscan, qs, or qw
    quick_kill_command = "k",
    -- Auto-features
@@ -2057,11 +2056,15 @@ end
 --- Update room state from GMCP room.info data
 -- @param ri GMCP room.info table {num, zone, name, exits, details}
 -- Side effects: saves _prev_room, updates _room
--- Tested by: State.update_room, State.update_room_maze, State.update_room_prev, State.update_room_nil_fields
+-- Note: rmid is force-coerced to number — Aardwolf GMCP can deliver num as string,
+--   and downstream comparisons (cmd_nx, Nav.on_room_change) require numeric equality
+-- Tested by: State.update_room, State.update_room_maze, State.update_room_prev,
+--   State.update_room_nil_fields, State.update_room_coerces_string_num,
+--   State.update_room_invalid_num_defaults
 function State.update_room(ri)
    State._prev_room = State._room
    State._room = {
-      rmid = ri.num or -1,
+      rmid = tonumber(ri.num) or -1,
       arid = ri.zone or "",
       name = ri.name or "",
       exits = ri.exits or {},
@@ -2526,7 +2529,8 @@ end
 -- Nav: Navigation — speedwalk, room cycling, arrival detection
 ------------------------------------------------------------------------
 Nav = {
-   _goto_list = {},   -- room IDs for room-based navigation
+   _goto_list = {},   -- room IDs for room-based navigation (numeric)
+   _goto_meta = {},   -- parallel list of {roomid, room_name, freq} for display
    _goto_index = 0,   -- current position in goto_list
    _dest_area = nil,  -- target area key (for area arrival detection)
    _dest_room = nil,  -- target room ID (for room arrival detection)
@@ -2559,7 +2563,9 @@ end
 --- Search mapper DB for rooms matching a name in a specific area
 -- @param room_name exact room name to match
 -- @param area_key area short key (e.g., "diatz")
--- @return list of {uid=string, name=string} tables, or empty table on failure
+-- @return list of {uid=string, name=string} tables sorted by numeric uid ascending,
+--   or empty table on failure
+-- Note: uid is TEXT in the mapper schema; CAST keeps "999" < "1000" instead of lexical "1000" < "999"
 -- Side effects: opens and closes Aardwolf.db read-only
 -- Tested by: Nav.search_rooms_found, _no_match, _wrong_area, _result_fields, _nil_args, _no_db
 function Nav.search_rooms(room_name, area_key)
@@ -2571,7 +2577,7 @@ function Nav.search_rooms(room_name, area_key)
    if not ok or not db then return {} end
 
    local sql = string.format(
-      "SELECT uid, name FROM rooms WHERE name = %s AND area = %s",
+      "SELECT uid, name FROM rooms WHERE name = %s AND area = %s ORDER BY CAST(uid AS INTEGER) ASC",
       Util.fixsql(room_name), Util.fixsql(area_key)
    )
    pcall(function()
@@ -2585,17 +2591,68 @@ end
 
 --- Build goto_list from search results (room UIDs)
 -- @param results list of {uid=string, name=string} from search_rooms
--- Side effects: sets Nav._goto_list and Nav._goto_index
+-- Side effects: sets Nav._goto_list and Nav._goto_index, clears _goto_meta
 -- Tested by: Nav.build_goto_list_basic, _empty, _skips_invalid
 function Nav.build_goto_list(results)
    Nav._goto_list = {}
+   Nav._goto_meta = {}
    Nav._goto_index = 0
    for _, r in ipairs(results) do
       local id = tonumber(r.uid)
       if id then
          table.insert(Nav._goto_list, id)
+         table.insert(Nav._goto_meta, {roomid = id, room_name = r.name, freq = 0})
       end
    end
+end
+
+--- Build goto_list from S&D mob history rooms (already freq-sorted by DB.find_mob)
+-- @param rooms list of {roomid, room_name, freq} from TargetList target.rooms
+-- Side effects: sets Nav._goto_list, Nav._goto_meta, _goto_index = 0
+-- Tested by: Nav.build_goto_list_from_rooms_basic, _empty, _preserves_order
+function Nav.build_goto_list_from_rooms(rooms)
+   Nav._goto_list = {}
+   Nav._goto_meta = {}
+   Nav._goto_index = 0
+   if not rooms then return end
+   for _, r in ipairs(rooms) do
+      local id = tonumber(r.roomid)
+      if id then
+         table.insert(Nav._goto_list, id)
+         table.insert(Nav._goto_meta, {roomid = id, room_name = r.room_name, freq = r.freq or 0})
+      end
+   end
+end
+
+--- Display the current goto_list with index, room name, and freq% (if known)
+-- @param target optional target object for header context (mob, area_key)
+-- Side effects: ColourNote output to user
+-- Tested by: Nav.display_goto_list_basic, _with_freq, _empty
+function Nav.display_goto_list(target)
+   if #Nav._goto_list == 0 then
+      Util.info("No rooms in goto list.")
+      return
+   end
+   local meta = Nav._goto_meta or {}
+   -- Compute freq total for percentage calculation
+   local freq_total = 0
+   for _, m in ipairs(meta) do freq_total = freq_total + (m.freq or 0) end
+   local header = target and (target.mob .. " (" .. (target.area_key or "?") .. ")") or "Rooms"
+   ColourNote("#808080", "", string.rep("-", 80))
+   ColourNote("#00B4E0", "", header)
+   for i, m in ipairs(meta) do
+      local roomid = tostring(m.roomid)
+      local name = m.room_name or "?"
+      local pct_text = ""
+      if freq_total > 0 and m.freq and m.freq > 0 then
+         local pct = math.floor((m.freq / freq_total) * 100 + 0.5)
+         pct_text = string.format("  %3d%%", pct)
+      end
+      local line = string.format("  %2d  (%5s)  %s%s", i, roomid, name, pct_text)
+      ColourNote("#E0E0E0", "", line)
+   end
+   ColourNote("#808080", "", string.rep("-", 80))
+   ColourNote("#808080", "", "Type 'go <N>' to navigate, 'nx' for next room.")
 end
 
 --- Fuzzy match an area key against DEFAULT_START_ROOMS (prefix then substring)
@@ -2737,11 +2794,12 @@ end
 -- a specific target. On completion/failure, chains to QuickWhere.
 ------------------------------------------------------------------------
 HuntTrick = {
-   _index = 1,           -- current mob instance number
-   _keyword = "",         -- search keyword
-   _active = false,       -- is hunt trick running?
-   _first_target = true,  -- is this the first hunt attempt? (for fallback)
-   _auto_go = false,      -- auto-navigate after QW finds room (xcp flow)
+   _index = 1,                    -- current mob instance number
+   _keyword = "",                 -- search keyword
+   _active = false,               -- is hunt trick running?
+   _first_target = true,          -- is this the first hunt attempt? (for fallback)
+   _auto_go = false,              -- auto-navigate after QW finds room (xcp flow)
+   _chain_on_complete = true,     -- chain to QW on here/unable/not_found (false when xcp launches in parallel with prebuilt goto_list)
 }
 
 --- Start hunt trick: enable triggers and send hunt command
@@ -2749,13 +2807,12 @@ HuntTrick = {
 -- @param keyword mob keyword to hunt
 -- @param mob_name full mob name (optional, for no_hunt check)
 -- @param area_key area key (optional, for no_hunt check)
--- Side effects: resets QW/AH, enables grp_hunt_trick, sends hunt command
--- Tested by: HuntTrick.start_basic, _with_index, _no_1_prefix, _resets_others, _no_hunt_blocked
-function HuntTrick.start(index, keyword, mob_name, area_key)
-   -- Re-entrant safety: reset other tools
-   QuickWhere.reset()
-   AutoHunt.reset()
-
+-- @param chain_on_complete optional bool (default true) — false skips QW chain on here/unable/not_found
+-- Side effects: enables grp_hunt_trick, sends hunt command
+-- Note: does NOT reset QW/AH — caller (cmd_ht for exclusive, cmd_xcp for parallel) decides
+-- Tested by: HuntTrick.start_basic, _with_index, _no_1_prefix, _no_hunt_blocked,
+--   HuntTrick.start_no_chain, cmd_ht.resets_others
+function HuntTrick.start(index, keyword, mob_name, area_key, chain_on_complete)
    -- Check no_hunt override
    if mob_name and area_key then
       local override = DB.get_mob_override(mob_name, area_key)
@@ -2768,6 +2825,11 @@ function HuntTrick.start(index, keyword, mob_name, area_key)
    HuntTrick._index = index or 1
    HuntTrick._keyword = keyword or ""
    HuntTrick._active = true
+   if chain_on_complete == nil then
+      HuntTrick._chain_on_complete = true
+   else
+      HuntTrick._chain_on_complete = chain_on_complete
+   end
 
    EnableTriggerGroup("grp_hunt_trick", true)
 
@@ -2787,6 +2849,7 @@ function HuntTrick.reset()
    HuntTrick._active = false
    HuntTrick._first_target = true
    HuntTrick._auto_go = false
+   HuntTrick._chain_on_complete = true
 end
 
 --- Check if hunt trick is currently active
@@ -2810,12 +2873,10 @@ local DIR_MAP = {north="n", south="s", east="e", west="w", up="u", down="d"}
 
 --- Start auto-hunt: enable triggers and send initial hunt command
 -- @param keyword mob keyword to hunt
--- Side effects: resets HT/QW, enables grp_auto_hunt, sends hunt command
--- Tested by: AutoHunt.start_basic, .start_resets_others
+-- Side effects: enables grp_auto_hunt, sends hunt command
+-- Note: does NOT reset HT/QW — caller decides (cmd_ah resets manually)
+-- Tested by: AutoHunt.start_basic, cmd_ah.resets_others
 function AutoHunt.start(keyword)
-   HuntTrick.reset()
-   QuickWhere.reset()
-
    AutoHunt._keyword = keyword or ""
    AutoHunt._active = true
    AutoHunt._direction = ""
@@ -2873,12 +2934,10 @@ end
 -- @param index starting instance number
 -- @param keyword mob keyword
 -- @param auto_go auto-navigate to first result (optional)
--- Side effects: resets HT/AH, enables grp_quick_where, sends where command
--- Tested by: QuickWhere.start_basic, _with_index, _no_1_prefix
+-- Side effects: enables grp_quick_where, sends where command
+-- Note: does NOT reset HT/AH — caller (cmd_qw for exclusive, cmd_xcp for parallel) decides
+-- Tested by: QuickWhere.start_basic, _with_index, _no_1_prefix, cmd_qw.resets_others
 function QuickWhere.start(index, keyword, auto_go)
-   HuntTrick.reset()
-   AutoHunt.reset()
-
    QuickWhere._index = index or 1
    QuickWhere._keyword = keyword or ""
    QuickWhere._exact = false
@@ -2900,12 +2959,10 @@ end
 -- @param keyword mob keyword for the where command
 -- @param mob_name full mob name for 30-char exact matching
 -- @param auto_go auto-navigate to first result (optional)
--- Side effects: resets HT/AH, enables grp_quick_where, sends where command
+-- Side effects: enables grp_quick_where, sends where command
+-- Note: does NOT reset HT/AH — caller decides (xcp runs parallel; cmd_qw resets manually)
 -- Tested by: QuickWhere.start_exact_basic
 function QuickWhere.start_exact(index, keyword, mob_name, auto_go)
-   HuntTrick.reset()
-   AutoHunt.reset()
-
    QuickWhere._index = index or 1
    QuickWhere._keyword = keyword or ""
    QuickWhere._exact = true
@@ -3293,15 +3350,17 @@ end
 
 --- Select CP target by index, display list, or attempt mid-campaign pickup
 -- @param wildcards[1] optional index N or empty string
--- Side effects: if not on CP, calls CP.do_info() to attempt pickup (async);
---   if on CP, sets State target, sets Nav._on_arrive callback (based on xcp_action_mode),
---   and triggers Nav navigation
--- Tested by: cmd_xcp.not_on_cp, cmd_xcp.no_arg_displays_list,
---   cmd_xcp.numeric_selects_target, cmd_xcp.index_out_of_bounds,
---   cmd_xcp.numeric_skips_dead, cmd_xcp.unknown_rejected,
---   cmd_xcp.arrive_triggers_ht, cmd_xcp.arrive_triggers_qw, cmd_xcp.arrive_off_no_action,
---   workflow.xcp_selects_and_navigates, workflow.xcp_picks_up_existing_cp,
---   workflow.xcp_ht_to_qw_chain, workflow.xcp_qw_direct
+-- Behavior on numeric N:
+--   1. Cancel any active hunt-trick (user is reselecting)
+--   2. Set target. If target.link_type == "room": single-room goto_list, auto-navigate
+--   3. Elif target.rooms (S&D history) non-empty: build goto_list freq-sorted, display.
+--      If list size == 1: auto-navigate. Else: wait for user `go`/`nx`.
+--   4. Else (no history): if already in target area, send `where keyword` directly.
+--      If not in area, navigate to area start, then run `where` on arrival.
+--   5. In all cases: start HT in parallel (chain_on_complete=false to avoid clobbering goto_list)
+-- Side effects: cancels HT, sets State target, populates Nav._goto_list, displays list,
+--   may call mapper goto, sends "where", starts HT
+-- Tested by: many — see test_commands.lua cmd_xcp.* and test_cp_workflow.lua workflow.xcp_*
 function cmd_xcp(name, line, wildcards)
    local args = Util.trim(wildcards[1] or "")
 
@@ -3317,54 +3376,73 @@ function cmd_xcp(name, line, wildcards)
    end
 
    if args == "" then
-      -- Display target list (WinkleGold behavior)
       TargetList.display()
       return
+   end
+
+   -- Numeric index selection
+   local index = tonumber(args)
+   if not index then
+      Util.error("Usage: xcp [N] — select target by index")
+      return
+   end
+   if index < 1 or index > TargetList.count() then
+      Util.error("Invalid index: ", tostring(index), " (1-", tostring(TargetList.count()), ")")
+      return
+   end
+   local t = TargetList.get(index)
+   if t.link_type == "unknown" then
+      Util.error("Target #", tostring(index), " has no mapper data.")
+      return
+   end
+
+   -- Cancel any in-flight HT/QW from a prior selection
+   HuntTrick.reset()
+   QuickWhere.reset()
+
+   State.set_target(t)
+
+   -- Path 1: room-based CP (exact room known)
+   if t.link_type == "room" and t.roomid then
+      Nav.build_goto_list_from_rooms({{roomid = t.roomid, room_name = t.location, freq = 0}})
+      Nav.display_goto_list(t)
+      Nav.goto_next()
+      HuntTrick.start(1, t.keyword, t.mob, t.area_key, false)
+      return
+   end
+
+   -- Path 2: S&D history available — build goto_list from prior sightings
+   if t.rooms and #t.rooms > 0 then
+      Nav.build_goto_list_from_rooms(t.rooms)
+      Nav.display_goto_list(t)
+      if #Nav._goto_list == 1 then
+         Nav.goto_next()
+      end
+      HuntTrick.start(1, t.keyword, t.mob, t.area_key, false)
+      return
+   end
+
+   -- Path 3: no history — discover via `where`. Must be in target area for `where` to work.
+   local current_area = State._room and State._room.arid or ""
+   if current_area == t.area_key then
+      -- Already in area — send `where` directly, skip navigation
+      QuickWhere.start_exact(1, t.keyword, t.mob, false)
+      HuntTrick.start(1, t.keyword, t.mob, t.area_key, false)
    else
-      -- Numeric index selection
-      local index = tonumber(args)
-      if not index then
-         Util.error("Usage: xcp [N] — select target by index")
-         return
+      -- Not in area — navigate to area start, then run `where` on arrival
+      Nav._on_arrive = function()
+         QuickWhere.start_exact(1, t.keyword, t.mob, false)
+         HuntTrick.start(1, t.keyword, t.mob, t.area_key, false)
       end
-      if index < 1 or index > TargetList.count() then
-         Util.error("Invalid index: ", tostring(index), " (1-", tostring(TargetList.count()), ")")
-         return
-      end
-      local t = TargetList.get(index)
-      if t.link_type == "unknown" then
-         Util.error("Target #", tostring(index), " has no mapper data.")
-         return
-      end
-      State.set_target(t)
-
-      -- Set arrival callback based on xcp_action_mode (Crowley's execute_in_area pattern)
-      local action = Config.get("xcp_action_mode")
-      if action == "ht" then
-         Nav._on_arrive = function()
-            HuntTrick._auto_go = true
-            HuntTrick.start(1, t.keyword)
-         end
-      elseif action == "qw" then
-         Nav._on_arrive = function()
-            QuickWhere.start_exact(1, t.keyword, t.mob, true)
-         end
-      end
-
-      if t.link_type == "area" then
-         Nav.goto_area(t.area_key)
-      elseif t.link_type == "room" and t.roomid then
-         Nav.goto_room(t.roomid)
-      elseif t.area_key then
-         Nav.goto_area(t.area_key)
-      end
+      Nav.goto_area(t.area_key)
    end
 end
 
 --- Navigate to a room in the goto_list by index
 -- @param wildcards[1] optional index N (default 1)
--- Side effects: sets Nav._goto_index, calls Nav.goto_room
--- Tested by: cmd_go.navigate_by_index, cmd_go.default_first, cmd_go.empty_list, cmd_go.area_string
+-- Side effects: cancels any active HT, sets Nav._goto_index, calls Nav.goto_room
+-- Tested by: cmd_go.navigate_by_index, cmd_go.default_first, cmd_go.empty_list,
+--   cmd_go.area_string, cmd_go.cancels_ht
 function cmd_go(name, line, wildcards)
    local args = Util.trim(wildcards[1] or "")
    local index = tonumber(args)
@@ -3381,19 +3459,25 @@ function cmd_go(name, line, wildcards)
       return
    end
 
+   -- User taking manual control — cancel any in-flight HT
+   HuntTrick.reset()
+
    Nav._goto_index = index
    -- goto_list contains numeric room IDs (from Nav.build_goto_list)
    Nav.goto_room(entry)
 end
 
 --- Advance to next room in goto_list (only if at current indexed room)
--- Side effects: increments Nav._goto_index, calls Nav.mapper_goto
--- Tested by: cmd_nx.advances_room, cmd_nx.end_of_list, cmd_nx.empty_list
+-- Side effects: cancels any active HT, increments Nav._goto_index, calls Nav.mapper_goto
+-- Tested by: cmd_nx.advances_room, cmd_nx.end_of_list, cmd_nx.empty_list, cmd_nx.cancels_ht
 function cmd_nx(name, line, wildcards)
    if #Nav._goto_list == 0 then
       Util.error("No room list. Use xcp to select a target first.")
       return
    end
+
+   -- User taking manual control — cancel any in-flight HT
+   HuntTrick.reset()
 
    -- Only advance if we're at the current indexed room
    local current = Nav._goto_list[Nav._goto_index]
@@ -3444,6 +3528,9 @@ function cmd_ht(name, line, wildcards)
       end
    end
 
+   -- Manual ht: exclusive — cancel any other hunting tool
+   QuickWhere.reset()
+   AutoHunt.reset()
    HuntTrick.start(index, keyword)
 end
 
@@ -3480,6 +3567,9 @@ function cmd_qw(name, line, wildcards)
       end
    end
 
+   -- Manual qw: exclusive — cancel any other hunting tool
+   HuntTrick.reset()
+   AutoHunt.reset()
    QuickWhere.start(index, keyword)
 end
 
@@ -3512,6 +3602,9 @@ function cmd_ah(name, line, wildcards)
       keyword = target.keyword
    end
 
+   -- Manual ah: exclusive — cancel any other hunting tool
+   HuntTrick.reset()
+   QuickWhere.reset()
    AutoHunt.start(keyword)
 end
 
@@ -3608,9 +3701,11 @@ function on_cp_check_line(name, line, wildcards)
    }
 end
 
---- Callback: cp check parsing complete — build target list
--- Side effects: disables check triggers individually, sets CP active, builds TargetList
--- Tested by: CP.check_parse_flow, workflow.cp_check_builds_target_list
+--- Callback: cp check parsing complete — build target list, auto-display on cold pickup
+-- Side effects: disables check triggers individually, sets CP active, builds TargetList,
+--   displays list when no prev_target (cold mid-CP pickup so user sees what was loaded)
+-- Tested by: CP.check_parse_flow, workflow.cp_check_builds_target_list,
+--   workflow.xcp_pickup_displays_list_on_cold_start, workflow.kill_refresh_does_not_display_list
 function on_cp_check_end(name, line, wildcards)
    EnableTrigger("trg_cp_check_line", false)
    EnableTrigger("trg_cp_check_end", false)
@@ -3649,6 +3744,10 @@ function on_cp_check_end(name, line, wildcards)
             State.clear_target()
          end
       end
+   else
+      -- Cold mid-CP pickup: no prior target to re-match. Show the freshly-built
+      -- list so the user sees what was loaded without typing xcp a second time.
+      TargetList.display()
    end
 end
 
@@ -3741,15 +3840,20 @@ function on_ht_direction(name, line, wildcards)
    Send(string.format("hunt %d.%s", new_index, keyword))
 end
 
---- Mob is here: chain to QW exact to identify the room
--- Tested by: on_ht_here.chains_to_qw_exact, on_ht_here.no_target_notifies
+--- Mob is here: chain to QW exact to identify the room (skipped when chain disabled)
+-- Tested by: on_ht_here.chains_to_qw_exact, on_ht_here.no_target_notifies, on_ht_here.no_chain
 function on_ht_here(name, line, wildcards)
    if not HuntTrick._active then return end
    local index = HuntTrick._index
    local keyword = HuntTrick._keyword
    local auto_go = HuntTrick._auto_go
+   local chain = HuntTrick._chain_on_complete
    local target = State.get_target()
    HuntTrick.reset()
+   if not chain then
+      Util.info("Mob is here!")
+      return
+   end
    if target then
       QuickWhere.start_exact(index, keyword, target.mob, auto_go)
    else
@@ -3757,15 +3861,20 @@ function on_ht_here(name, line, wildcards)
    end
 end
 
---- Unable to hunt: chain to QW exact (Crowley's ht_complete pattern)
--- Tested by: on_ht_unable.chains_to_qw_exact, on_ht_unable.no_target_notifies
+--- Unable to hunt: chain to QW exact (skipped when chain disabled — xcp already has goto_list)
+-- Tested by: on_ht_unable.chains_to_qw_exact, on_ht_unable.no_target_notifies, on_ht_unable.no_chain
 function on_ht_unable(name, line, wildcards)
    if not HuntTrick._active then return end
    local index = HuntTrick._index
    local keyword = HuntTrick._keyword
    local auto_go = HuntTrick._auto_go
+   local chain = HuntTrick._chain_on_complete
    local target = State.get_target()
    HuntTrick.reset()
+   if not chain then
+      Util.info("Hunt trick complete.")
+      return
+   end
    if target then
       QuickWhere.start_exact(index, keyword, target.mob, auto_go)
    else
@@ -3773,15 +3882,20 @@ function on_ht_unable(name, line, wildcards)
    end
 end
 
---- No one in area by that name: fallback to QW if first target, else notify
--- Tested by: on_ht_not_found.first_target_fallback, .not_first_no_qw
+--- No one in area by that name: fallback to QW if first target (skipped when chain disabled)
+-- Tested by: on_ht_not_found.first_target_fallback, .not_first_no_qw, on_ht_not_found.no_chain
 function on_ht_not_found(name, line, wildcards)
    if not HuntTrick._active then return end
    local first = HuntTrick._first_target
    local keyword = HuntTrick._keyword
    local auto_go = HuntTrick._auto_go
+   local chain = HuntTrick._chain_on_complete
    local target = State.get_target()
    HuntTrick.reset()
+   if not chain then
+      Util.info("Hunt trick failed.")
+      return
+   end
    if first and target then
       Util.info("Hunt trick failed. Attempting quick where.")
       QuickWhere.start_exact(1, keyword, target.mob, auto_go)
@@ -3848,6 +3962,7 @@ end
 
 --- Where result matched: check if it's our mob, search rooms or retry
 -- wildcards[1] = 30-char padded mob name, wildcards[2] = room name
+-- On match: build goto_list from mapper, display, auto-navigate ONLY if exactly 1 room
 -- Tested by: on_qw_match.exact_match_searches_rooms, .keyword_match_searches_rooms,
 --            .no_match_increments, .max_100_stops, .auto_go_navigates, .no_auto_go_displays
 function on_qw_match(name, line, wildcards)
@@ -3872,8 +3987,8 @@ function on_qw_match(name, line, wildcards)
    end
 
    -- Match found — search mapper DB for rooms with this name in the area
-   local auto_go = QuickWhere._auto_go
    local area_key = State._room and State._room.arid or ""
+   local target = State.get_target()
    QuickWhere.reset()
 
    if area_key == "" then
@@ -3885,8 +4000,9 @@ function on_qw_match(name, line, wildcards)
    Nav.build_goto_list(results)
 
    if #Nav._goto_list > 0 then
-      Util.info("Found ", tostring(#Nav._goto_list), " room(s) matching '", room_name, "'")
-      if auto_go then
+      Nav.display_goto_list(target)
+      -- Auto-navigate only when there's a single unambiguous match
+      if #Nav._goto_list == 1 then
          Nav.goto_next()
       end
    else
